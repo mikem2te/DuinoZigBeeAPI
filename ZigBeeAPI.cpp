@@ -170,12 +170,14 @@ boolean ZigBeeAPI::TX(long DAddHi, long DAddLo, word NetAdd, byte sEP, byte dEP,
 
   memcpy(&xBuff[23], BuffAdd, min(BuffSize,100));       // Copy Payload buffer into packet
   xBuff[min((23 + BuffSize),xBuffSize)] = GetChkSum(3, Size + 3);   // Find the Chksum and place it in last byte of API Packet
-  //Send API Packet
+  
   #if _DEBUG
     Serial.print("<");
     PrintHex(xBuff,20 + min(BuffSize,(xBuffSize-20))+3);
     Serial.println();
   #endif
+  
+  //Send API Packet
   for (int x=0; x <= (Size + 3); x++)                   // Transmit packet byte at a time
     {
     write(xBuff[min(x,xBuffSize)]);
@@ -231,7 +233,13 @@ boolean ZigBeeAPI::TX_Indirect(byte sEP, word Prfl, word Clstr, const char BuffA
   memcpy(&xBuff[23], BuffAdd, min(BuffSize,100));       // Copy Payload buffer into packet
 
   xBuff[min((23 + BuffSize),xBuffSize)] = GetChkSum(3, Size + 3);   // Find the Chksum and place it in last byte of API Packet
-
+  
+  #if _DEBUG
+    Serial.print("<");
+    PrintHex(xBuff,20 + min(BuffSize,(xBuffSize-20))+3);
+    Serial.println();
+  #endif
+  
   //Send API Packet
   for (int x=0; x <= (Size + 3); x++)                   // Transmit packet byte at a time
   {
@@ -414,6 +422,12 @@ int ZigBeeAPI::RX(int TimeMS)
   	LOG("\"Many-to-One\" route request");
   	xBuffPayloadSize = PktSize + 3;
 	return false;
+  }
+  else if (xBuff[3] == 0x8B)                            // "Transmit Status frame" frame
+  {
+    //LOG("\"Transmit Status frame\" frame");
+    xBuffPayloadSize = PktSize + 3;
+    return -5;
   }
   else
   {
