@@ -28,12 +28,13 @@
 // Define high level hardware
 //#define BMP280
 #define BatteryPowered
-
+#define DHTTYPE DHT11
 
 // Define clusters
 #define OnOffCluster
 #define TemperatureCluster;
-#define PressureCluster;
+//#define PressureCluster;
+#define HumidityCluster;
     
 #include <ZigBeeAPI.h>
 #include <SoftwareSerial.h>
@@ -52,10 +53,22 @@
 #ifdef BMP280
   #include <Adafruit_BMP280.h>
   Adafruit_BMP280 bmp; // I2C
-  const byte BMEPowerPin = 7;
-  unsigned long BMP_Check;
+  #define TempSensorPowerPin 7
+  unsigned long TempSensor_CheckFreq = 5;
+  unsigned long TempSensor_LastCheck = 0;
+  bool TempSensor_Check = false;
 #endif
-    
+
+#ifdef DHTTYPE
+  #include "DHT.h"
+  #define DHTPIN 6 
+  #define TempSensorPowerPin 7
+  DHT dht(DHTPIN, DHTTYPE);
+  unsigned long TempSensor_CheckFreq = 1;
+  unsigned long TempSensor_LastCheck = 0;
+  bool TempSensor_Check = false;
+#endif
+
 #ifdef BatteryPowered
   #include <avr/sleep.h>
 #endif  
@@ -166,7 +179,7 @@ Conversation overview of the initial connection to the SmartThings home automati
   
 bool pinState(byte pin) {return (0!=(*portOutputRegister(digitalPinToPort(pin)) & digitalPinToBitMask(pin)));};
 
-void SendEnumerationReport(boolean Value)
+void SendOnOffReport(boolean Value)
 {
   //***************************************
   // Reports boolean value (1 or 0)
@@ -242,6 +255,30 @@ void SendPressureReport(int Value)
 }
 #endif
 
+#ifdef HumidityCluster
+void SendHumidityReport(int Value)
+{
+   #ifdef BatteryPowered
+    WakexBee();
+  #endif
+  
+  memset(Buffer, 0, BufferSize);
+  Buffer[0] = 0x18;                                                           // Frame Control 0x18 = direction is from server to client, disable default response P14 of ZCL
+  Buffer[1] = 0x11;                                                           // Set the sequence number
+  Buffer[2] = 0x0A;                                                           // Command Identifer 0x0A = Report attributes see Table 2.9 on page 16 of ZCL
+
+  Buffer[3] = 0x00;                                                           // Attribute Identifier (2 bytes) field being reported see figure 2.24 on page 36 of ZCL. 0x0000 = OnOff.
+  Buffer[4] = 0x00;
+
+  Buffer[5] = 0x29;                                                         // Attribute Data Type 0x10 = Boolean enumeration, see table 2.16 on page 54 of ZCL
+
+  Buffer[6] = lowByte(Value);                                             // Attribute Data Field in this case 0x00 = Off, see Table 3.40 on page 126 of ZCL. Set the on / off status based on pin
+  Buffer[7] = highByte(Value);                                                         // Attribute Value (0 = off, 1 = on)
+
+  zb.TX_Indirect(0x01, 0x0104, 0x0405, Buffer, 8);                            // TX_Indirect(sEP, Prfl, Clstr, BuffAdd, BuffSize)
+}
+#endif
+
 void Tx_Device_annce()                                                        // ZDO Cluster 0x0013 Device_annce
 {
   //***************************************
@@ -273,40 +310,6 @@ void Tx_Device_annce()                                                        //
   zb.TX(0x00000000, 0x0000FFFF, 0xFFFD, 0, 0, 0, 0x0013, Buffer, 12);         // $FFFD = Broadcast to all non sleeping devices
 }
 
-void ZCLpkt()
-{
-  //***************************************
-  // ZigBee Cluster Library (ZCL) cluster numbers supported
-  // ZCL are defined in the ZigBee Cluster Library Document 075123r04ZB
-  // http://www.zigbee.org/wp-content/uploads/2014/11/docs-07-5123-04-zigbee-cluster-library-specification.pdf
-  //***************************************
-  switch (int(zb._PktCluster()))
-  {
-    case 0x0000:
-      clstr_Basic();                                                          // Basic Cluster Page 78 of ZigBee Cluster Library
-      break;
-      
-    #ifdef OnOffCluster  
-    case 0x0006:
-      clstr_OnOff();                                                          // On/Off Cluster Page 125 of ZigBee Cluster Library
-      break;
-    #endif  
-
-    #ifdef TemperatureCluster
-    case 0x0402:
-      clstr_Temperature();                                                          // On/Off Cluster Page 125 of ZigBee Cluster Library
-      break;
-    #endif 
-
-    #ifdef PressureCluster
-    case 0x0403:
-      clstr_Pressure();                                                          // On/Off Cluster Page 125 of ZigBee Cluster Library
-      break;
-    #endif  
-
-    default: Serial.println(F("** ZCLpkt received but there is no valid handler! **"));
-  }
-}
 
 void printByteData(uint8_t Byte)
 {
@@ -375,12 +378,6 @@ void setup()
     digitalWrite(10, LOW);
   #endif
   
-  // BMP280 setup
-  #ifdef BMP280
-    pinMode(BMEPowerPin, OUTPUT);         // Power pin for the BME
-    digitalWrite(BMEPowerPin, HIGH);
-  #endif
-
   #ifdef BatteryPowered
     pinMode(xBeeOnSleep,INPUT);   // set Pin as Input (default)
     digitalWrite(xBeeOnSleep,HIGH);  // enable pullup resistor
@@ -409,7 +406,14 @@ void setup()
 
 
   bool status;
-    
+
+  // Temperature Sensor Power Pin setup
+  #ifdef TempSensorPowerPin
+    pinMode(TempSensorPowerPin, OUTPUT);         // Power pin for the BME
+    digitalWrite(TempSensorPowerPin, HIGH);
+  #endif
+
+  
   #ifdef BMP280
     do {
       status = bmp.begin();  
@@ -420,7 +424,11 @@ void setup()
       }
     } while (!status);
   #endif
-  
+
+  #ifdef DHTTYPE
+    dht.begin();
+  #endif
+    
   //***************************************
   // Un-Remark the next command to force xBee to leave Network and reset
   //***************************************
@@ -559,7 +567,7 @@ void loop()
   now = millis();
   
   #ifdef BMP280
-    BMP_Check = millis();
+    TempSensor_LastCheck = millis();
   #endif 
   
   do                                                                          // Begin polling the button and checking for incoming packets
@@ -570,8 +578,31 @@ void loop()
         digitalWrite(xBeeRTS, HIGH);
         sleepNow();
         digitalWrite(xBeeRTS, LOW);
+        TempSensor_LastCheck++;
       }
     #endif  
+
+
+
+    #ifdef BatteryPowered
+      if (TempSensor_LastCheck >= TempSensor_CheckFreq)
+      {
+        TempSensor_LastCheck = 0;
+        TempSensor_Check = true;
+      } else {
+        TempSensor_Check = false;
+      }
+    #else
+      if ((millis()-TempSensor_LastCheck)>1000)
+      {
+        TempSensor_LastCheck = millis();
+        TempSensor_Check = true;
+      } else {
+        TempSensor_Check = false;
+      }
+    #endif
+
+
 
   	rxResult = zb.RX(10);                                                     // Check for incoming packets for 10ms
 
@@ -585,7 +616,7 @@ void loop()
           digitalWrite(LEDPin,HIGH);                                          // Set high if non momentary operation
         #endif  
         
-  		  SendEnumerationReport(pinState(LEDPin));                              // Let SmartThings know about it
+  		  SendOnOffReport(pinState(LEDPin));                              // Let SmartThings know about it
       
   		  buttonReleased = false;																								// Don't allow anymore toggling until button is released and pressed again
 
@@ -597,7 +628,7 @@ void loop()
           if (pinState(LEDPin))
           {
             digitalWrite(LEDPin,!pinState(LEDPin));                           // Toggle Output
-            SendEnumerationReport(pinState(LEDPin));                          // Let SmartThings know about it
+            SendOnOffReport(pinState(LEDPin));                          // Let SmartThings know about it
           }
         #endif  
   	    buttonReleased = true;
@@ -612,7 +643,7 @@ void loop()
         #endif
                 
         digitalWrite(LEDPin,!pinState(LEDPin));                                 // Toggle Output
-        SendEnumerationReport(pinState(LEDPin));                                // Let SmartThings know about it
+        SendOnOffReport(pinState(LEDPin));                                // Let SmartThings know about it
       
         buttonIsPressed = false;                                                 // Don't allow anymore toggling until button is released and pressed again
 
@@ -622,15 +653,25 @@ void loop()
 
       
     #ifdef BMP280
-      if ((millis()-BMP_Check)>1000)
+      if (TempSensor_Check)
       {
         Serial.println(F("Getting temp"));
         Temperature = bmp.readTemperature() * 10;
         Pressure = (int) (bmp.readPressure() / 10.0);
-        BMP_Check = millis();
       }
     #endif  
-
+    
+    #ifdef DHTTYPE
+      if (TempSensor_Check)
+      {
+        Serial.println(F("Getting temp"));
+        float t = dht.readTemperature();
+        float h = dht.readHumidity();
+        if (!isnan(t)) Temperature = (int) (t * 100.0);
+        if (!isnan(h)) Humidity = (int) (h * 100.0);
+      }
+    #endif  
+    
     #ifdef TemperatureCluster
     if (abs(Temperature - old_Temperature) >= 5)
     {
@@ -650,7 +691,17 @@ void loop()
       old_Pressure = Pressure;
     }
     #endif
-    
+
+    #ifdef HumidityCluster
+    if (abs(Humidity - old_Humidity) >= 5)
+    {
+      Serial.print(F("New humidity is :"));
+      Serial.println(Humidity);
+      SendHumidityReport(Humidity);
+      old_Humidity = Humidity;
+    }
+    #endif
+       
   } while (rxResult == -2);                                                   // Keep checking for packets until there is no timeout while checking
   if (rxResult == true)
   {
@@ -849,7 +900,13 @@ void Simple_Desc_req()                                                        //
         Buffer[packetSize++] = 0x04;
         Buffer[11]++; 
       #endif
-          
+      
+      #ifdef HumidityCluster
+        Buffer[packetSize++] = 0x05;                                                        // Output cluster 2 bytes each little endian. 0x0006 = On / Off Cluster
+        Buffer[packetSize++] = 0x04;
+        Buffer[11]++; 
+      #endif 
+             
       Buffer[packetSize++] = 0x00;                                                        // Output cluster list. No output clusters
 
       zb.TX(zb._PktIEEEAddHi(), zb._PktIEEEAddLo(), zb._PktNetAdd(), 0, 0, 0, 0x8004, Buffer, packetSize);
@@ -886,7 +943,6 @@ void Active_EP_req()                                                          //
   Buffer[5] = 0x01;                                                           // EndPoint number
   zb.TX(zb._PktIEEEAddHi(), zb._PktIEEEAddLo(), zb._PktNetAdd(), 0, 0, 0, 0x8005, Buffer, 6);
 }
-
 
 //ZigBee Cluster Library commands follow
 void clstr_Basic()                                                            // Cluster 0x0000 Basic
@@ -1095,6 +1151,46 @@ void clstr_OnOff()                                                            //
 }
 #endif
 
+void ZCLpkt()
+{
+  //***************************************
+  // ZigBee Cluster Library (ZCL) cluster numbers supported
+  // ZCL are defined in the ZigBee Cluster Library Document 075123r04ZB
+  // http://www.zigbee.org/wp-content/uploads/2014/11/docs-07-5123-04-zigbee-cluster-library-specification.pdf
+  //***************************************
+  switch (int(zb._PktCluster()))
+  {
+    case 0x0000:
+      clstr_Basic();                                                          // Basic Cluster Page 78 of ZigBee Cluster Library
+      break;
+      
+    #ifdef OnOffCluster  
+    case 0x0006:
+      clstr_OnOff();                                                          // On/Off Cluster Page 125 of ZigBee Cluster Library
+      break;
+    #endif  
+
+    #ifdef TemperatureCluster
+    case 0x0402:
+      clstr_Temperature();                                                          // On/Off Cluster Page 125 of ZigBee Cluster Library
+      break;
+    #endif 
+
+    #ifdef PressureCluster
+    case 0x0403:
+      clstr_Pressure();                                                          // On/Off Cluster Page 125 of ZigBee Cluster Library
+      break;
+    #endif  
+
+    #ifdef HumidityCluster
+    case 0x0405:
+      clstr_Humidity();                                                          // On/Off Cluster Page 125 of ZigBee Cluster Library
+      break;
+    #endif  
+    
+    default: Serial.println(F("** ZCLpkt received but there is no valid handler! **"));
+  }
+}
 
 #ifdef TemperatureCluster
 void clstr_Temperature()                                                            // Cluster 0x0402 Temp
@@ -1176,6 +1272,49 @@ void clstr_Pressure()                                                           
     Serial.println();
     Serial.print(F("Read attribute request, sending result. Pressure is "));
     Serial.println(Pressure/10.0);
+
+    zb.TX(zb._PktIEEEAddHi(), zb._PktIEEEAddLo(), zb._PktNetAdd(), zb._PktDEP(), zb._PktSEP(), zb._PktProfile(), zb._PktCluster(), Buffer, 9);
+  }
+}
+#endif
+
+#ifdef HumidityCluster
+void clstr_Humidity()                                                            // Cluster 0x0402 Temp
+{
+  //***************************************
+  // ZCL Cluster 0x0006 On/Off Cluster
+  // Section 3.8 on page 125 of ZCL
+  //***************************************
+  byte frmType, seqNum, cmdID;
+  word attributeID;
+  frmType = byte(zb._PktData()[0]);                                           // Frame Type is bit 0 and 1 of Byte 0 P14 of ZCL
+  frmType = frmType & 3;                                                      // Bitwise AND (&) with a mask to make sure we are looking at first two bits
+  seqNum = byte(zb._PktData()[1]);                                            // Transaction seq number can be any value used in return packet to match a response to a request
+  cmdID = byte(zb._PktData()[2]);                                             // Command ID Byte P16 of ZCL
+  attributeID = byte(zb._PktData()[4]);                                       // Attribute ID Word(little endian) P126 of ZCL
+  attributeID = (attributeID << 8) + byte(zb._PktData()[3]);                                       
+
+  Serial.print(F("Read humidity attribute request."));
+  if (frmType == 0x00 && cmdID == 0x00 && attributeID == 0x00)                // frmType = 0x00 (General Command Frame see Table 2.9 on P16 of ZCL)
+  {
+    memset(Buffer, 0 , BufferSize);                                           // Read attributes
+    Buffer[0] = 0x18;                                                         // Frame Control 0x18 = direction is from server to client, disable default response P14 of ZCL
+    Buffer[1] = seqNum;                                                       // Set the sequence number to match the seq number in requesting packet
+    Buffer[2] = 0x01;                                                         // Command Identifer 0x01 = Read attribute response see Table 2.9 on page 16 of ZCL
+
+    Buffer[3] = 0x00;                                                         // Attribute Identifier (2 bytes) field being reported see figure 2.24 on page 36 of ZCL
+    Buffer[4] = 0x00;
+
+    Buffer[5] = 0x00;                                                         // Status 00 = Success
+
+    Buffer[6] = 0x29;                                                         // Attribute Data Type 0x10 = Boolean, see Table 2.16 on page 54 of ZCL
+
+
+    Buffer[7] = lowByte(Humidity);                                             // Attribute Data Field in this case 0x00 = Off, see Table 3.40 on page 126 of ZCL. Set the on / off status based on pin
+    Buffer[8] = highByte(Humidity);                                             // Attribute Data Field in this case 0x00 = Off, see Table 3.40 on page 126 of ZCL. Set the on / off status based on pin
+    Serial.println();
+    Serial.print(F("Read attribute request, sending result. Humidity is "));
+    Serial.println(Humidity/100.0);
 
     zb.TX(zb._PktIEEEAddHi(), zb._PktIEEEAddLo(), zb._PktNetAdd(), zb._PktDEP(), zb._PktSEP(), zb._PktProfile(), zb._PktCluster(), Buffer, 9);
   }
