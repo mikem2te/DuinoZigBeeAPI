@@ -203,7 +203,7 @@ boolean ZigBeeAPI::TX_Indirect(byte sEP, word Prfl, word Clstr, const char BuffA
   xBuff[1] = highByte(Size);                            // Set Length of packet
   xBuff[2] = lowByte(Size);
   xBuff[3] = 0x11;                                      // APID 11 = Explicit Addressing
-  xBuff[4] = 0x00;                                      // Frame ID 0 = no response
+  xBuff[4] = 0x01;                                      // Frame ID 0 = no response
   xBuff[5] = 0xFF;                                      // Set 64 bit IEEE Address to all 0xFFFFFFFF since this is an indrect message the real address will be looked
   xBuff[6] = 0xFF;                                      // up in the xBee's binding table and put in the place of the 0xFFFFF
   xBuff[7] = 0xFF;

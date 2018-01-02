@@ -26,7 +26,7 @@
 //***********************************************
 
 // Define high level hardware
-#define BMP280
+//#define BMP280
 #define BatteryPowered
 
 
@@ -355,6 +355,7 @@ void WakexBee()
     digitalWrite(xBeeSleepRQ,HIGH);  // Wake up xBee
     delay(10);
     digitalWrite(xBeeSleepRQ,LOW);  // Wake up xBee
+    delay(50);
   }
 }
 #endif
@@ -556,7 +557,10 @@ void loop()
   Serial.println();
   Serial.println(F("Waiting for packet"));
   now = millis();
-  BMP_Check = millis();
+  
+  #ifdef BMP280
+    BMP_Check = millis();
+  #endif 
   
   do                                                                          // Begin polling the button and checking for incoming packets
   {
