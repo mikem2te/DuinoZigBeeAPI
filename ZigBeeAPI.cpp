@@ -15,6 +15,7 @@
 #include <ZigBeeAPI.h>
 #define _DEBUG 0
 
+ZigBeeAPI::ZigBeeAPI() {};
 ZigBeeAPI::ZigBeeAPI(Stream& port) : _port(&port){};
 void ZigBeeAPI::begin(Stream &serial) {_port = &serial;}
 void ZigBeeAPI::setSerial(Stream &serial) {	_port = &serial;}

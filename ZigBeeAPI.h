@@ -10,6 +10,7 @@ const byte strBuffSize = 128;
 class ZigBeeAPI : public Stream
 {
 public:
+	ZigBeeAPI();
 	ZigBeeAPI(Stream& port);
 	void begin(Stream &serial);
   void setSerial(Stream &serial);
