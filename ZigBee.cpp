@@ -11,7 +11,7 @@ word LclNet = 0;
 unsigned long LclIeeeLo = 0;
 unsigned long LclIeeeHi = 0;
 unsigned long now = 0;
-bool xBeeIsAwake = false;
+volatile bool xBeeIsAwake = false;
 
 extern int xBeeReset;
 extern int xBeeSleepRQ;
@@ -22,6 +22,15 @@ extern int rxResult;
 extern bool BatteryPowered;
 
 ZigBeeAPI zb;
+
+int old_Temperature;
+unsigned int old_Humidity;
+int old_Pressure;
+
+unsigned int Sensor_ReportFreq = 4; // Wake cycles for sleepy device, ms for non sleepy
+unsigned int TempSensor_Report = 0;
+unsigned int HumiditySensor_Report = 0;
+unsigned int PressureSensor_Report = 0;
 
 
 // ----------------------------------
@@ -105,9 +114,9 @@ void xBeeAwakeChange()
   xBeeIsAwake = digitalRead(xBeeOnSleep);
   
   if (xBeeIsAwake) {
-    Serial.println(F("xBee is Awake"));
+    //Serial.println(F("xBee is Awake"));
   } else {
-    Serial.println(F("xBee is Sleeping"));
+    //Serial.println(F("xBee is Sleeping"));
   }
 }
 
@@ -117,15 +126,17 @@ void sleepNow()         // here we put the arduino to sleep
  
   sleep_enable();          // enables the sleep bit in the mcucr register so sleep is possible. just a safety pin
  
-  Serial.println(F("Arduino Sleeping, waiting for awake signal"));
+  //Serial.println(F("Arduino Sleeping, waiting for awake signal"));
 
   delay(100);
     
   sleep_mode();            // Put the device  to sleep!! THE PROGRAM CONTINUES FROM HERE AFTER WAKING UP
 
   sleep_disable();         // first thing after waking from sleep:
-                            
-  Serial.println(F("Arduino Waking"));   
+            
+  //if (xBeeIsAwake) Serial.println(F("xBee is Awake"));
+             
+  //Serial.println(F("Arduino Waking"));   
 }
 
 void ResetNetwork()
@@ -311,17 +322,17 @@ void WakexBee()
   }
 }
 
-int Get_xBeeTemp()
+float Get_xBeeTemp()
 {
   if (BatteryPowered) WakexBee();
   
   if(zb.AT("TP"))
   {
-    return (zb._PktData()[0] * 256 + zb._PktData()[1]) * 100;
+    return (zb._PktData()[0] * 256 + zb._PktData()[1]);
   }
   else
   {
-    return -999;
+    return NAN;
    }
 }
 
@@ -330,9 +341,18 @@ int Get_xBeeTemp()
 // --------------------------
 // Inbound packet processing
 // --------------------------
+// If RX not true it will =
+//   -1 = Unknown Digi API Frame Type (Only 0x91 and 0x88 are supported)
+//   -2 = Timeout waiting for data
+//   -3 = RX Packet ID not known.
+//   -4 = Bad checksum
+//   -5 = Transmit Status frame received
+//   -9 = xBee sleeping
 int CheckInboundPackets()
 {
   int rxResult = 0;
+
+  if ((BatteryPowered) && (!xBeeIsAwake)) return -9;
   
   do
   {
@@ -399,12 +419,18 @@ void ProcessInboundPacket(int rxResult)
     }
   }
   else if (rxResult == -5)
-  {
     Serial.println(F("Transmit Status frame received"));
-  }
+  else if (rxResult == -9)
+    Serial.println(F("XBee sleeping"));
   else
   {
-    Serial.print(F("Unknown packet ->"));
+    if (rxResult == -1)
+      Serial.println(F("Unknown Digi API Frame Type ->"));
+    else if (rxResult == -3)
+      Serial.println(F("RX Packet ID not known ->"));
+    else 
+      Serial.print(F("Unknown packet ->"));
+  
     int x=0;
     while(zb._ReadLog()[x] != '\0')
     {  
@@ -648,6 +674,8 @@ void ZCLpkt()
 // ------------------------
 void Send10Response(bool Value, int attribute, byte seqNum)   
 {
+    if (BatteryPowered) WakexBee();
+  
     memset(Buffer, 0 , BufferSize);                                           // Read attributes
     Buffer[0] = 0x18;                                                         // Frame Control 0x18 = direction is from server to client, disable default response P14 of ZCL
     Buffer[1] = seqNum;                                                       // Set the sequence number to match the seq number in requesting packet
@@ -669,6 +697,8 @@ void Send10Response(bool Value, int attribute, byte seqNum)
 
 void Send20Response(byte Value, int attribute, byte seqNum)   
 {
+    if (BatteryPowered) WakexBee();
+  
     memset(Buffer, 0 , BufferSize);                                           // Read attributes
     Buffer[0] = 0x18;                                                         // Frame Control 0x18 = direction is from server to client, disable default response P14 of ZCL
     Buffer[1] = seqNum;                                                       // Set the sequence number to match the seq number in requesting packet
@@ -690,6 +720,8 @@ void Send20Response(byte Value, int attribute, byte seqNum)
 
 void Send21Response(unsigned int Value, int attribute, byte seqNum)   
 {
+    if (BatteryPowered) WakexBee();
+  
     memset(Buffer, 0 , BufferSize);                                           // Read attributes
     Buffer[0] = 0x18;                                                         // Frame Control 0x18 = direction is from server to client, disable default response P14 of ZCL
     Buffer[1] = seqNum;                                                       // Set the sequence number to match the seq number in requesting packet
@@ -712,6 +744,8 @@ void Send21Response(unsigned int Value, int attribute, byte seqNum)
 
 void Send29Response(int Value, int attribute, byte seqNum)   
 {
+    if (BatteryPowered) WakexBee();
+  
     memset(Buffer, 0 , BufferSize);                                           // Read attributes
     Buffer[0] = 0x18;                                                         // Frame Control 0x18 = direction is from server to client, disable default response P14 of ZCL
     Buffer[1] = seqNum;                                                       // Set the sequence number to match the seq number in requesting packet
@@ -734,6 +768,8 @@ void Send29Response(int Value, int attribute, byte seqNum)
 
 void Send30Response(int Value, int attribute, byte seqNum)   
 {
+    if (BatteryPowered) WakexBee();
+  
     memset(Buffer, 0 , BufferSize);                                           // Read attributes
     Buffer[0] = 0x18;                                                         // Frame Control 0x18 = direction is from server to client, disable default response P14 of ZCL
     Buffer[1] = seqNum;                                                       // Set the sequence number to match the seq number in requesting packet
@@ -755,6 +791,8 @@ void Send30Response(int Value, int attribute, byte seqNum)
 
 void Send42Response(char * Value, int attribute, byte seqNum)   
 { 
+    if (BatteryPowered) WakexBee();
+  
     int StrLen = 0;
     
     StrLen = strlen(Value); //-1;
@@ -788,6 +826,8 @@ void sendDefaultResponse(byte CmdID, byte Status, byte EndPoint)
   // Status = Byte size value specifies either Success (0x00) or the nature of the error see Table 2.17 on page 67 of ZigBee Cluster Library
   // EndPoint = Byte size value of the EndPoint this response is for
   //***************************************
+  if (BatteryPowered) WakexBee();
+  
   memset(Buffer, 0 , BufferSize);                                             // Clear Buffer
   Buffer[0] = 0x18;                                                           // Frame Control 0x18 = direction is from server to client, disable default response P14 of ZCL
   Buffer[1] = zb._PktData()[1];                                               // Set the sequence number to match the seq number in requesting packet
@@ -812,19 +852,53 @@ void SendOnOffReport(boolean Value)
   Send10Report(Value, 0x0006, 0x0000);
 }
 
-void SendTemperatureReport(int Value)
+
+void SendTemperatureReport(float Value)
 {
-  Send29Report(Value, 0x0402, 0x0000);
+  if (Value == NAN) return;
+  
+  int Temperature = (int) (Value * 100.0);
+  
+  if ((abs(Temperature - old_Temperature) >= 5) || (TempSensor_Report >= Sensor_ReportFreq))
+  {  
+    Send29Report(Temperature, 0x0402, 0x0000);
+    old_Temperature = Temperature;
+    TempSensor_Report = 0;
+  }
+  
+  TempSensor_Report++;
 }
 
-void SendPressureReport(int Value)
+void SendPressureReport(float Value)
 {
-  Send29Report(Value, 0x0403, 0x0000);
+  if (Value == NAN) return;
+  
+  int Pressure = (int) (Value * 100.0);
+     
+  if ((abs(Pressure - old_Pressure) >= 5) || (PressureSensor_Report >= Sensor_ReportFreq))
+  {
+    Send29Report(Pressure, 0x0403, 0x0000);
+    old_Pressure = Pressure;
+    PressureSensor_Report = 0;
+  }
+  
+  PressureSensor_Report++;
 }
 
-void SendHumidityReport(int Value)
+void SendHumidityReport(float Value)
 {
-  Send21Report(Value, 0x0405, 0x0000);
+  if (Value == NAN) return;
+  
+  unsigned int Humidity = (int) (Value * 100.0);
+  
+  if ((abs(Humidity - old_Humidity) >= 5) || (HumiditySensor_Report >= Sensor_ReportFreq))
+  {
+    Send21Report(Humidity, 0x0405, 0x0000);
+    old_Humidity = Humidity;
+    HumiditySensor_Report = 0;
+  }
+  
+  HumiditySensor_Report++;
 }
 
 

@@ -30,7 +30,7 @@ void Tx_Device_annce();
 void JoinNetwork();
 void SetupAddresses();
 void WakexBee();
-int Get_xBeeTemp();
+float Get_xBeeTemp();
 
 
 // Inbound packet processing
@@ -56,9 +56,9 @@ void Send42Response(char * Value, int attribute, byte seqNum);
 void sendDefaultResponse(byte CmdID, byte Status, byte EndPoint);
 
 void SendOnOffReport(boolean Value);
-void SendTemperatureReport(int Value);
-void SendPressureReport(int Value);
-void SendHumidityReport(int Value);
+void SendTemperatureReport(float Value);
+void SendPressureReport(float Value);
+void SendHumidityReport(float Value);
 
 void Send10Report(int Value, int cluster, int attribute);
 void Send21Report(unsigned int Value, int cluster, int attribute);  
