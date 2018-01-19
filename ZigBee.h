@@ -34,7 +34,7 @@ float Get_xBeeTemp();
 
 
 // Inbound packet processing
-int CheckInboundPackets();
+int CheckInboundPackets(bool extendedTimeout);
 void ProcessInboundPacket(int rxResult);
 
 

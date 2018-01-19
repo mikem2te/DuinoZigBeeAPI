@@ -348,7 +348,7 @@ float Get_xBeeTemp()
 //   -4 = Bad checksum
 //   -5 = Transmit Status frame received
 //   -9 = xBee sleeping
-int CheckInboundPackets()
+int CheckInboundPackets(bool extendedTimeout)
 {
   int rxResult = 0;
 
@@ -356,7 +356,7 @@ int CheckInboundPackets()
   
   do
   {
-    rxResult = zb.RX(20);                                                     // Check for incoming packets for 10ms
+    rxResult = zb.RX(extendedTimeout?500:20);                                                     // Check for incoming packets for 10ms
 
     // xBee packet received. Process
     if (rxResult != -2)
