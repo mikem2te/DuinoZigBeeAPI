@@ -23,12 +23,14 @@ extern int xBeeOnSleep;
 extern int xBeeBaud;
 
 extern int rxResult;
-extern bool BatteryPowered;
+bool BatteryPowered;
 
-unsigned long Sensor_LastCheckWake = 0;
-unsigned long Sensor_LastCheckMillis = 0;
-extern unsigned long Sensor_CheckFreqWake; // Wake cycles for sleepy device, ms for non sleepy
-extern unsigned long Sensor_CheckFreqMillis; // Wake cycles for sleepy device, ms for non sleepy
+unsigned long Arduino_WakeCount = 0;
+unsigned long SensorCheck_LastWake = 0;
+unsigned long SensorCheck_LastMillis = 0;
+extern unsigned long SensorCheck_RetryMillis;
+extern unsigned long SensorCheck_FreqWake; // Wake cycles for sleepy device, ms for non sleepy
+extern unsigned long SensorCheck_FreqMillis; // Wake cycles for sleepy device, ms for non sleepy
    
 ZigBeeAPI zb;
 
@@ -144,24 +146,24 @@ void sleepNow()         // here we put the arduino to sleep
     digitalWrite(xBeeRTS, HIGH);
     Serial.println(F("Arduino Sleeping, waiting for awake signal"));
   
-  set_sleep_mode(SLEEP_MODE_PWR_DOWN);   // sleep mode is set here
+    set_sleep_mode(SLEEP_MODE_PWR_DOWN);   // sleep mode is set here
  
-  sleep_enable();          // enables the sleep bit in the mcucr register so sleep is possible. just a safety pin
+    sleep_enable();          // enables the sleep bit in the mcucr register so sleep is possible. just a safety pin
  
   //Serial.println(F("Arduino Sleeping, waiting for awake signal"));
 
-  delay(100);
+    delay(100);
     
-  sleep_mode();            // Put the device  to sleep!! THE PROGRAM CONTINUES FROM HERE AFTER WAKING UP
+    sleep_mode();            // Put the device  to sleep!! THE PROGRAM CONTINUES FROM HERE AFTER WAKING UP
 
-  sleep_disable();         // first thing after waking from sleep:
+    sleep_disable();         // first thing after waking from sleep:
    
     if (xBeeIsAwake)
       Serial.println(F("XBee is Awake, Arduino Waking"));
-      else   
-        Serial.println(F("Arduino Waking, assume Arduino interrupt"));  
-      digitalWrite(xBeeRTS, LOW);
-      Sensor_LastCheckWake++;   
+    else   
+      Serial.println(F("Arduino Waking, assume Arduino interrupt"));  
+    digitalWrite(xBeeRTS, LOW);
+    Arduino_WakeCount++;
   }
   //if (xBeeIsAwake) Serial.println(F("xBee is Awake"));
              
@@ -1255,19 +1257,21 @@ void Send29Report(byte endPoint, int Value, int cluster, int attribute)
 
 
 
-void setup_ZigBee(Stream& port, byte _endpointClusterCount)
+void setup_ZigBee(Stream& port, byte _endpointClusterCount, bool _BatteryPowered)
 {
   //***************************************
   // Setup xBee
   //***************************************  
+  
+  endpointClusterCount = _endpointClusterCount;
+  BatteryPowered = _BatteryPowered;
+  
   ConfigurexBee(port);
   JoinNetwork(); 
   SetupAddresses();
   //ResetNetwork();
   Serial.println(F("XBee setup."));
-  
-  endpointClusterCount = _endpointClusterCount;
-  
+ 
   // Display number of endpoints
   char EndPointList[ClusterListSize];
   get_EndPointList(EndPointList); 
@@ -1285,14 +1289,15 @@ void loop_ZigBee()
 {
   int rxResult = 0;
   bool Sensor_Check = false; 
-
-  if ((BatteryPowered && (Sensor_LastCheckWake >= Sensor_CheckFreqWake)) ||
-   (millis()-Sensor_LastCheckMillis >= Sensor_CheckFreqMillis) ||
-   (Sensor_RequireRetry))
+  
+  if ((BatteryPowered && Arduino_WakeCount >= SensorCheck_LastWake + SensorCheck_FreqWake) ||
+   (millis() >= SensorCheck_LastMillis + SensorCheck_FreqMillis) ||
+   (Sensor_RequireRetry && Arduino_WakeCount > SensorCheck_LastWake) ||
+   (Sensor_RequireRetry && millis() >= SensorCheck_LastMillis + SensorCheck_RetryMillis)) 
   {
     Sensor_Check = true;
-    Sensor_LastCheckWake = 0;
-    Sensor_LastCheckMillis = millis(); 
+    SensorCheck_LastWake = Arduino_WakeCount;
+    SensorCheck_LastMillis = millis(); 
     Sensor_RequireRetry = false;
   }
 

@@ -24,13 +24,11 @@
 //***********************************************
 
 // Define high level hardware connected
-bool BatteryPowered = true;
+#define BatteryPowered
 //#define BMP280
 #define DHTTYPE DHT11
 #define xBeeTemp
-
-// Define available clusters
-#define OnOffCluster
+#define OnOffButton
 
     
 #include <ZigBeeAPI.h>
@@ -50,13 +48,15 @@ EndpointCluster endpointClusters[]= {
 
 
 // On Off setup
-#ifdef OnOffCluster
-  #define OnOffClusterMomentary
+#ifdef OnOffButton
+  #define OnOffButtonMomentary
+  boolean buttonReleased = true;
   const byte buttonPin = 2;          // This is the pin that the button is attached to that will locally turn the LED on and off. Connect the button between GND and this pin
   const byte LEDPin=LED_BUILTIN;     // This is the pin that is connected to an LED's anode (positive side)
                                      // Make sure to use a current limiting resistor in series with the LED
                                      // Connect the other end of the LED to ground  
 #endif  
+
 
 // BMP setup
 #ifdef BMP280
@@ -128,15 +128,11 @@ Conversation overview of the initial connection to the SmartThings home automati
   int xBeeSleepRQ = 9;  // This is the Arduino pin connected to the xBee's sleep rq pin. Not needed if using a powered node
   int xBeeBaud=9600;    // The baud rate of the xBee must match this number (set with the xBee's BD command)
 
-  extern volatile bool xBeeIsAwake;
-
-  
   #if !defined (__AVR_ATmega32U4__) && !defined (__MK20DX128__)
     SoftwareSerial Serial1(xBeeTx, xBeeRx);
   #endif  
 
- extern ZigBeeAPI zb;                
-
+  extern ZigBeeAPI zb;                
 
   #ifdef BatteryPowered
     char  Model[] = "Arduino xBee (Battery)";     // ZigBee Basic Device ModelIdentifier 0 to 32 byte char string P79 of ZCL
@@ -148,14 +144,11 @@ Conversation overview of the initial connection to the SmartThings home automati
   byte AppVersion = 1;               // Application version
   byte HardwareVersion = 1;          // Hardware version 
 
+  unsigned long SensorCheck_RetryMillis = 10000;
+  unsigned long SensorCheck_FreqWake = 2; // Wake cycles for sleepy device, ms for non sleepy
+  unsigned long SensorCheck_FreqMillis = 20000; // Wake cycles for sleepy device, ms for non sleepy
 
-  unsigned long Sensor_CheckFreqWake = 2; // Wake cycles for sleepy device, ms for non sleepy
-  unsigned long Sensor_CheckFreqMillis = 20000; // Wake cycles for sleepy device, ms for non sleepy
 
-
-  #ifdef OnOffCluster
-    boolean buttonReleased = true;
-  #endif
 
   
 
@@ -190,7 +183,7 @@ void setup()
 
          
   // On Off cluster setup
-  #ifdef OnOffCluster
+  #ifdef OnOffButton
     pinMode(LEDPin, OUTPUT);              // Set LEDPin as Output
     pinMode(buttonPin, INPUT);            // Set Button pin Set as Input
     digitalWrite(buttonPin, HIGH);
@@ -226,8 +219,12 @@ void setup()
   attachInterrupt(digitalPinToInterrupt(buttonPin), buttonPressed, CHANGE);
 
   Serial1.begin(xBeeBaud);
-  setup_ZigBee(Serial1, sizeof(endpointClusters) / sizeof(EndpointCluster));
-
+  
+  #ifdef BatteryPowered
+    setup_ZigBee(Serial1, sizeof(endpointClusters) / sizeof(EndpointCluster), true);
+  #else
+    setup_ZigBee(Serial1, sizeof(endpointClusters) / sizeof(EndpointCluster), false);
+  #endif
   now = millis();
 }
 
@@ -243,18 +240,17 @@ void loop()
   // The packet is also printed to the screen formatted so you can see addressing and payload details.
   //***************************************
 
-  if (BatteryPowered)
-  {
+  #ifdef BatteryPowered
     sleepNow();
-  }
+  #endif
   
   loop_ZigBee();
 
   // On Off cluster button check
-  #ifdef OnOffCluster
+  #ifdef OnOffButton
 	  if ((digitalRead(buttonPin) == false) && ((millis()-now)>100) && (buttonReleased == true)) // Check if the button is being pressed
 	  {
-      #ifdef OnOffClusterMomentary
+      #ifdef OnOffButtonMomentary
         digitalWrite(LEDPin,!pinState(LEDPin));                             // Toggle Output
       #else  
         digitalWrite(LEDPin,HIGH);                                          // Set high if non momentary operation
@@ -268,7 +264,7 @@ void loop()
 	  }
 	  if (digitalRead(buttonPin) == true)                                     // Check if the button has been released*/
 	  {
-      #ifndef OnOffClusterMomentary
+      #ifndef OnOffButtonMomentary
         if (pinState(LEDPin))
         {
           digitalWrite(LEDPin,!pinState(LEDPin));                           // Toggle Output

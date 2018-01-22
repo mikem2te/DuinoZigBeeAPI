@@ -33,7 +33,7 @@ void formatDate(char const *date, char const *tm, char *buff);
 
 
 // xBee, Network and Reset management
-void setup_ZigBee(Stream& port, byte _endpointClusterCount);
+void setup_ZigBee(Stream& port, byte _endpointClusterCount, bool _BatteryPowered);
 void loop_ZigBee();
 
 void ConfigurexBee(Stream& port);
