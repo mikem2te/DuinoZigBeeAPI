@@ -32,9 +32,9 @@ bool BatteryPowered = true;
 // Define available clusters
 #define PowerConfigCluster
 #define OnOffCluster
-#define TemperatureCluster;
-//#define PressureCluster;
-#define HumidityCluster;
+#define TemperatureCluster
+//#define PressureCluster
+#define HumidityCluster
     
 #include <ZigBeeAPI.h>
 #include "ZigBee.h"
@@ -55,7 +55,6 @@ bool BatteryPowered = true;
   #include <Adafruit_BMP280.h>
   Adafruit_BMP280 bmp; // I2C
   #define TempSensorPowerPin 7
-
 #endif
 
 #ifdef DHTTYPE
@@ -120,9 +119,10 @@ Conversation overview of the initial connection to the SmartThings home automati
   int xBeeRx=5;         // This is the Arduino pin connected to the xBee's receive pin. Not needed for Leonardo or Mega
   int xBeeRTS=8;        // This is the Arduino pin connected to the xBee's RTS pin.
   int xBeeReset=12;     // This is the Arduino pin connected to the xBee's reset pin, not needed if using soft reset (AT FR)
-  int xBeeOnSleep = 3;
+  int xBeeOnSleep = 3;  // This is the Arduino pin connected to the xBee's on/sleep pin. Not needed if using a powered node
+  int xBeeSleepRQ = 9;  // This is the Arduino pin connected to the xBee's sleep rq pin. Not needed if using a powered node
   int xBeeBaud=9600;    // The baud rate of the xBee must match this number (set with the xBee's BD command)
-  int xBeeSleepRQ = 9;
+
   extern volatile bool xBeeIsAwake;
 
   
@@ -144,12 +144,13 @@ Conversation overview of the initial connection to the SmartThings home automati
   byte HardwareVersion = 1;          // Hardware version 
 
 
-//  int rxResult = 0;
-
   unsigned long Sensor_CheckFreqWake = 2; // Wake cycles for sleepy device, ms for non sleepy
   unsigned long Sensor_LastCheckWake = 0;
   unsigned long Sensor_CheckFreqMillis = 20000; // Wake cycles for sleepy device, ms for non sleepy
   unsigned long Sensor_LastCheckMillis = 0;
+
+  bool Sensor_RequireRetry = false;
+
 
   #ifdef OnOffCluster
     boolean buttonReleased = true;
@@ -250,8 +251,8 @@ void loop()
 
   int rxResult = 0;
   bool Sensor_Check = false; 
-  
 
+  
   if (BatteryPowered)
   {
     if (!xBeeIsAwake)
@@ -278,21 +279,19 @@ void loop()
   {
     Sensor_Check = false;
 
-    if ((BatteryPowered) && (Sensor_LastCheckWake >= Sensor_CheckFreqWake))
-        Sensor_Check = true;
-
-    if ((millis()-Sensor_LastCheckMillis)>Sensor_CheckFreqMillis)
+    if ((BatteryPowered && (Sensor_LastCheckWake >= Sensor_CheckFreqWake)) ||
+       (millis()-Sensor_LastCheckMillis >= Sensor_CheckFreqMillis) ||
+       (Sensor_RequireRetry))
+    {
       Sensor_Check = true;
-
-    if (Sensor_Check)
-    { 
       Sensor_LastCheckWake = 0;
-      Sensor_LastCheckMillis = millis();     
+      Sensor_LastCheckMillis = millis(); 
+      Sensor_RequireRetry = false;
     }
 
 
     // Check for any unprocessed inboud messages. Process these first
-  	rxResult = CheckInboundPackets();
+  	rxResult = CheckInboundPackets(false);
 
     // On Off cluster button check
     #ifdef OnOffCluster
@@ -323,18 +322,37 @@ void loop()
   	  };             
     #endif
 
-    #ifdef TemperatureCluster;
-      if (Sensor_Check) SendTemperatureReport(get_Temperature());
-    #endif 
+    if (Sensor_Check > 0) {
+      #ifdef TemperatureCluster;
+        float t = get_Temperature();
+        if (!isnan(t))
+        {
+          SendTemperatureReport(t);
+          rxResult = CheckInboundPackets(true);
+        }
+        else Sensor_RequireRetry = true;
+      #endif 
     
-    #ifdef PressureCluster
-      if (Sensor_Check) SendPressureReport(get_Pressure());
-    #endif  
+      #ifdef PressureCluster
+        float p = get_Pressure();
+        if (!isnan(p))
+        {
+          SendPressureReport(p);
+          rxResult = CheckInboundPackets(true);
+        }
+        else Sensor_RequireRetry = true;
+      #endif  
 
-    #ifdef HumidityCluster
-      if (Sensor_Check) SendHumidityReport(get_Humidity());
-    #endif
-    
+      #ifdef HumidityCluster
+        float h = get_Humidity();
+        if (!isnan(h))
+        {
+          SendHumidityReport(h);
+          rxResult = CheckInboundPackets(true);
+        }
+        else Sensor_RequireRetry = true;
+      #endif
+    }
 
   } while (BatteryPowered && rxResult != -9);                                                   // Keep checking for packets until there is no timeout while checking
   
@@ -354,12 +372,6 @@ float get_Temperature()
   #ifdef DHTTYPE
     Serial.print(F("DHT Sensor"));
     t = dht.readTemperature();
-    if (isnan(t))
-    {
-      Serial.print(F(". Trying again"));
-      delay(2500);
-      t = dht.readTemperature();
-    }
   #endif  
 
   #ifdef xBeeTemp

@@ -5,6 +5,19 @@
 #include <ZigBeeAPI.h>
 #include <SoftwareSerial.h>
 
+#define cluster_Basic 0x0000
+#define cluster_PowerConfiguration 0x0001
+#define cluster_OnOff 0x0006
+#define cluster_Temperature 0x0402
+#define cluster_Pressure 0x0403
+#define cluster_RelativeHumidity 0x0405
+
+
+struct EndpointCluster {
+   byte endpoint;
+   unsigned int cluster;
+};
+
 const byte ClusterListSize = 40;
 const byte BufferSize = 75;
 
@@ -20,6 +33,9 @@ void formatDate(char const *date, char const *tm, char *buff);
 
 
 // xBee, Network and Reset management
+void setup_ZigBee(Stream& port, byte _endpointClusterCount);
+void loop_ZigBee();
+
 void ConfigurexBee(Stream& port);
 void xBeeAwakeChange();
 void sleepNow();
@@ -29,7 +45,7 @@ void resetXB();
 void Tx_Device_annce();
 void JoinNetwork();
 void SetupAddresses();
-void WakexBee();
+void WakexBee(bool force);
 float Get_xBeeTemp();
 
 
@@ -42,6 +58,8 @@ void ProcessInboundPacket(int rxResult);
 void ZDOpkt();
 void Simple_Desc_req();
 void Active_EP_req();
+int get_EndPointList(byte *list);
+int get_ClustersForEndPoint(byte endPoint, unsigned int *list);
 
 // Zigbee Cluster Library commands
 void ZCLpkt();
@@ -55,14 +73,17 @@ void Send30Response(int Value, int attribute, byte seqNum);
 void Send42Response(char * Value, int attribute, byte seqNum); 
 void sendDefaultResponse(byte CmdID, byte Status, byte EndPoint);
 
-void SendOnOffReport(boolean Value);
-void SendTemperatureReport(float Value);
-void SendPressureReport(float Value);
-void SendHumidityReport(float Value);
+void SendOnOffReport(byte endPoint, boolean Value);
+void SendTemperatureReport(byte endPoint, float Value);
+void SendPressureReport(byte endPoint, float Value);
+void SendHumidityReport(byte endPoint, float Value);
 
-void Send10Report(int Value, int cluster, int attribute);
-void Send21Report(unsigned int Value, int cluster, int attribute);  
-void Send29Report(int Value, int cluster, int attribute);
+void Send10Report(byte endPoint, int Value, int cluster, int attribute);
+void Send21Report(byte endPoint, unsigned int Value, int cluster, int attribute);  
+void Send29Report(byte endPoint, int Value, int cluster, int attribute);
+
+int PollSensors();
+
 
 #endif
 

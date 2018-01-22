@@ -6,6 +6,9 @@
 const char FuncNotImplemented[] = "** FUNCTION NOT IMPLEMENTED **";
 const char mths[] = "Jan01Feb02Mar03Apr04May05Jun06Jul07Aug08Sep09Oct10Nov11Dec12";
 
+extern EndpointCluster endpointClusters[];
+byte endpointClusterCount; 
+
 byte Buffer[BufferSize];
 word LclNet = 0;
 unsigned long LclIeeeLo = 0;
@@ -17,11 +20,19 @@ extern int xBeeReset;
 extern int xBeeSleepRQ;
 extern int xBeeRTS;
 extern int xBeeOnSleep;
+extern int xBeeBaud;
 
 extern int rxResult;
 extern bool BatteryPowered;
 
+unsigned long Sensor_LastCheckWake = 0;
+unsigned long Sensor_LastCheckMillis = 0;
+extern unsigned long Sensor_CheckFreqWake; // Wake cycles for sleepy device, ms for non sleepy
+extern unsigned long Sensor_CheckFreqMillis; // Wake cycles for sleepy device, ms for non sleepy
+   
 ZigBeeAPI zb;
+
+bool Sensor_RequireRetry;
 
 int old_Temperature;
 unsigned int old_Humidity;
@@ -32,6 +43,11 @@ unsigned int TempSensor_Report = 0;
 unsigned int HumiditySensor_Report = 0;
 unsigned int PressureSensor_Report = 0;
 
+extern char Model[];
+extern char Manufacturer[];
+extern char SWVersion[];
+extern byte AppVersion;
+extern byte HardwareVersion;
 
 // ----------------------------------
 // Utility functions
@@ -122,6 +138,12 @@ void xBeeAwakeChange()
 
 void sleepNow()         // here we put the arduino to sleep
 {
+  if (!xBeeIsAwake)
+  {
+    Serial.println(F("xBee is Sleeping"));
+    digitalWrite(xBeeRTS, HIGH);
+    Serial.println(F("Arduino Sleeping, waiting for awake signal"));
+  
   set_sleep_mode(SLEEP_MODE_PWR_DOWN);   // sleep mode is set here
  
   sleep_enable();          // enables the sleep bit in the mcucr register so sleep is possible. just a safety pin
@@ -133,7 +155,14 @@ void sleepNow()         // here we put the arduino to sleep
   sleep_mode();            // Put the device  to sleep!! THE PROGRAM CONTINUES FROM HERE AFTER WAKING UP
 
   sleep_disable();         // first thing after waking from sleep:
-            
+   
+    if (xBeeIsAwake)
+      Serial.println(F("XBee is Awake, Arduino Waking"));
+      else   
+        Serial.println(F("Arduino Waking, assume Arduino interrupt"));  
+      digitalWrite(xBeeRTS, LOW);
+      Sensor_LastCheckWake++;   
+  }
   //if (xBeeIsAwake) Serial.println(F("xBee is Awake"));
              
   //Serial.println(F("Arduino Waking"));   
@@ -220,7 +249,7 @@ void JoinNetwork()
   Serial.println();
   Serial.print(F("Network Join Status: "));
   
-  if (BatteryPowered) WakexBee();
+  if (BatteryPowered) WakexBee(true);
   
   zb.AT("AI");
   if (byte(zb._PktData()[0]) == 0x00)
@@ -253,7 +282,7 @@ void JoinNetwork()
     {
       if ((millis() - now) > 1000)
       {
-        if (BatteryPowered) WakexBee();
+        if (BatteryPowered) WakexBee(true);
       
         now=millis();
         if(zb.AT("AI"))
@@ -310,9 +339,9 @@ void SetupAddresses()
   Serial.println(LclIeeeLo,HEX);
 }
 
-void WakexBee()
+void WakexBee(bool force)
 {
-  if (!xBeeIsAwake && BatteryPowered)
+  if ((!xBeeIsAwake && BatteryPowered) || force)
   {
     Serial.println(F("Kicking xBee"));
     digitalWrite(xBeeSleepRQ,HIGH);  // Wake up xBee
@@ -324,7 +353,7 @@ void WakexBee()
 
 float Get_xBeeTemp()
 {
-  if (BatteryPowered) WakexBee();
+  if (BatteryPowered) WakexBee(true);
   
   if(zb.AT("TP"))
   {
@@ -332,6 +361,12 @@ float Get_xBeeTemp()
   }
   else
   {
+    int x=0;
+    while(zb._ReadLog()[x] != '\0')
+    {  
+      Serial.print(char(zb._ReadLog()[x]));
+      x++;
+    }
     return NAN;
    }
 }
@@ -477,11 +512,50 @@ void ZDOpkt()
   }
 }
 
-int get_ClusterList(char *list) __attribute__((weak));
-int get_ClusterList(char *list)
+int get_EndPointList(byte *list)
 {
-  Serial.println(FuncNotImplemented); 
-  return 0;
+  int endPointCount = 0;
+  //int charPtr=0;
+  bool allreadyExists = false;
+  
+  for (int i = 0; i < endpointClusterCount; i++)
+  {
+      allreadyExists = false;
+      
+      for (int j = 0; j < endPointCount; j++)
+      {
+          if (list[j] == endpointClusters[i].endpoint) allreadyExists = true;
+      }
+      
+      if (!allreadyExists)
+      {
+        list[endPointCount] = endpointClusters[i].endpoint;
+        endPointCount++;
+      }
+  }
+  Serial.print(F("Total number of endpoints:")); 
+  Serial.println(endPointCount);
+  return endPointCount;
+}
+
+int get_ClustersForEndPoint(byte endPoint, unsigned int *list)
+{
+  int clusterCount = 0;
+  int charPtr=0;
+  
+  for (int i = 0; i < endpointClusterCount; i++)
+  {
+      if (endpointClusters[i].endpoint == endPoint)
+      {
+        list[clusterCount] = endpointClusters[i].cluster;
+        clusterCount++;
+      }
+  }
+  Serial.print(F("Total number of clusters for endpoint ")); 
+  Serial.println(endPoint);
+  Serial.print(F(":")); 
+  Serial.println(clusterCount);
+  return clusterCount;
 }
 
 void Simple_Desc_req()                                                        // ZDO Cluster 0x8004 Simple_Desc_rsp
@@ -493,29 +567,32 @@ void Simple_Desc_req()                                                        //
   // outbound clusters for the requested end point.  This command is sent once for each end point to discover all services available.
   //***************************************
   int packetSize;
-  int clusterQty;
-  char ClusterList[ClusterListSize];
-  
+  int clusterCount;
+  unsigned int ClusterList[ClusterListSize];
+    
   Serial.println(F("ZDOpkt Packet Received - Simple Descriptor cluster 0x0004. Responding with 0x8004"));
   
   byte epToRpt = byte(zb._PktData()[3]);                                      // End Point to report Simple Desc on
 
+  clusterCount = get_ClustersForEndPoint(epToRpt, ClusterList);
+    
   Serial.println();
   Serial.print(F("Reporting Simple Desc for End Point "));
-  Serial.print(epToRpt,HEX);
+  Serial.println (epToRpt,HEX);
 
-  switch (epToRpt) {
-    case 0x01:                                                                  // Report for end point 0x38
-      clusterQty = get_ClusterList(ClusterList);
+  if (clusterCount > 0)
+  {
+                                                             // Report for end point 0x38
+
       memset(Buffer, 0 , BufferSize);
       
       Buffer[0] = zb._PktData()[0];                                             // Set Transaction Seq number to match inbound packet's seq number
       Buffer[1] = 0x00;                                                         // Status 0x00 = success Table 2.93 on page 159 of ZBSpec
       Buffer[2] = zb._PktData()[1];                                             // Set Network address little endian order
       Buffer[3] = zb._PktData()[2];
-      Buffer[4] = 8 + clusterQty * 2;                                           // Length in bytes of the Simple Descriptor to Follow
+      Buffer[4] = 8 + clusterCount * 2;                                           // Length in bytes of the Simple Descriptor to Follow
 
-      Buffer[5] = 0x01;                                                         // Endpoint of the simple descriptor Table 2.38 on page 88 of ZBSpec
+      Buffer[5] = epToRpt;                                                         // Endpoint of the simple descriptor Table 2.38 on page 88 of ZBSpec
 
       Buffer[6] = 0x04;                                                         // Application Profile ID 2 Bytes Little endian. 0x0104 = Home Automation Profile
       Buffer[7] = 0x01;
@@ -524,22 +601,22 @@ void Simple_Desc_req()                                                        //
 
       Buffer[10] = 0x00;                                                        // App Dev Version 4bits + reserved 4bits
 
-      Buffer[11] = clusterQty;                                                  // Input cluster count in this case we only have 0x02 input clusters                                                       
+      Buffer[11] = clusterCount;                                                  // Input cluster count in this case we only have 0x02 input clusters                                                       
 
       packetSize = 12;
 
-      for (int i = 0; i < clusterQty * 2; i++)
+      for (int i = 0; i < clusterCount * 2; i++)
       {
-        Buffer[packetSize++] = ClusterList[i];
+        Buffer[packetSize++] = lowByte(ClusterList[i]);
+        Buffer[packetSize++] = highByte(ClusterList[i]);
       }
              
       Buffer[packetSize++] = 0x00;                                                        // Output cluster list. No output clusters
 
       zb.TX(zb._PktIEEEAddHi(), zb._PktIEEEAddLo(), zb._PktNetAdd(), 0, 0, 0, 0x8004, Buffer, packetSize);
-    break;
-
-      
-    default:
+  }
+   else
+   {
       memset(Buffer, 0 , BufferSize);
       Buffer[0] = zb._PktData()[0];                                             // Set Transcation Seq number to match inbound packets seq number
       Buffer[1] = 0x82;                                                         // Status 0x82 = Invalid_EP page 212 of ZigBee Specification
@@ -548,7 +625,6 @@ void Simple_Desc_req()                                                        //
       Buffer[4] = 0x00;                                                         // Length in bytes of the Simple Descriptor to Follow
 
       zb.TX(zb._PktIEEEAddHi(), zb._PktIEEEAddLo(), zb._PktNetAdd(), 0, 0, 0, 0x8004, Buffer, 5);
-    break;
   }
 }
 
@@ -559,15 +635,22 @@ void Active_EP_req()                                                          //
   // Active EP Request ZDO cluster 0x0005 is used to discover the end points of a ZigBee device.
   // The results of this request are returned in ZDO Cluster 0x8005, a packet that list the end point count and each end point number.
   //***************************************
+  
+  byte EndPointList[ClusterListSize];
+    
+  int endPointCount = get_EndPointList(EndPointList);
+  
   Serial.println(F("ZDOpkt Packet Received - Reporting Active End Points cluster 0x0005. Responding with 0x8005"));
   memset(Buffer, 0 , BufferSize);
   Buffer[0] = zb._PktData()[0];                                               // Set Transaction Seq number to match inbound packets seq number
   Buffer[1] = 0x00;                                                           // Status 0x00 = success Table 2.94 on page 161 of ZBSpec
   Buffer[2] = zb._PktData()[1];                                               // Set Network address little endian order
   Buffer[3] = zb._PktData()[2];
-  Buffer[4] = 0x01;                                                           // Active EndPoint count only one in this case page 161 of ZBSpec
-  Buffer[5] = 0x01;                                                           // EndPoint number
-  zb.TX(zb._PktIEEEAddHi(), zb._PktIEEEAddLo(), zb._PktNetAdd(), 0, 0, 0, 0x8005, Buffer, 6);
+  //Buffer[4] = 0x01;                                                           // Active EndPoint count only one in this case page 161 of ZBSpec
+  //Buffer[5] = 0x01;                                                           // EndPoint number
+  Buffer[4] = get_EndPointList(EndPointList);                                 // Active EndPoint count only one in this case page 161 of ZBSpec
+  memcpy(&Buffer[5], EndPointList, endPointCount);                                       // Copy byte string array into buffer
+  zb.TX(zb._PktIEEEAddHi(), zb._PktIEEEAddLo(), zb._PktNetAdd(), 0, 0, 0, 0x8005, Buffer, 5 +  + endPointCount);
 }
 
 
@@ -575,47 +658,241 @@ void Active_EP_req()                                                          //
 // --------------------------------------
 // Zigbee Cluster Library commands
 // --------------------------------------
-void clstr_Basic(byte frmType, byte seqNum, byte cmdID, word attributeID) __attribute__((weak));
-void clstr_Basic(byte frmType, byte seqNum, byte cmdID, word attributeID)
+void clstr_Basic(byte frmType, byte seqNum, byte cmdID, word attributeID)                                                            // Cluster 0x0000 Basic
+{
+  char Buf[16];
+  
+  //***************************************
+  // ZCL Cluster 0x0000 Basic Cluster
+  // Section 3.2 on page 78 of ZCL
+  //***************************************
+  Serial.println();
+  Serial.print(F("Basic Cluster attribute ID "));
+  Serial.print(attributeID,HEX);
+  Serial.print(F(" "));
+  
+  if (cmdID == 0x00 && attributeID == 0x0001)                                 // Read Attribute 0x0001 ApplicationVersion
+  {
+    Serial.print(F("(Application Ver) "));
+    Send20Response(AppVersion, 0x0001, seqNum);
+    return;
+  }
+  if (cmdID == 0x00 && attributeID == 0x0003)                                 // Read Attribute 0x0003 HWVersion
+  {
+    Serial.print(F("(Hardware Ver) "));
+    Send20Response(HardwareVersion, 0x0003, seqNum);
+    return;
+  }
+  if (cmdID == 0x00 && attributeID == 0x0004)                                 // Read Attribute 0x0004 ManufacturerName
+  {
+    Serial.print(F("(Manufacturer) "));
+    Send42Response(Manufacturer, 0x0004, seqNum);
+    return;    
+  }
+  if (cmdID == 0x00 && attributeID == 0x0005)                                 // Read Attribute 0x0005 ModelIdentifier
+  {
+    Serial.print(F("(Model) "));
+    Send42Response(Model, 0x0005, seqNum);
+    return;    
+  } 
+  if (cmdID == 0x00 && attributeID == 0x0006)                                 // Read Attribute 0x0006 Datecode
+  {
+    Serial.print(F("(Datecode) "));
+    formatDate(__DATE__, __TIME__, Buf);
+    Send42Response(Buf, 0x0006, seqNum);
+    return;    
+  } 
+  if (cmdID == 0x00 && attributeID == 0x0007)                                 // Read Attribute 0x0007 Power source
+  {
+    Serial.print(F("(Power Source) "));
+    if (BatteryPowered) 
+      Send30Response(0x03, 0x0007, seqNum);
+    else
+      Send30Response(0x04, 0x0007, seqNum);
+    return;    
+  } 
+  if (cmdID == 0x00 && attributeID == 0x4000)                                 // Read Attribute 0x4000 SWVersion
+  {
+    Serial.print(F("(SW Version) "));
+    Send42Response(SWVersion, 0x4000, seqNum);
+    return;    
+  }
+  Serial.println(F("Invalid type/command/attribute!"));
+}
+
+
+void clstr_PowerConfiguration(byte frmType, byte seqNum, byte cmdID, word attributeID)                                                            // Cluster 0x0402 Temp
+{
+  //***************************************
+  // ZCL Cluster 0x0006 On/Off Cluster
+  // Section 3.8 on page 125 of ZCL
+  //***************************************
+  Serial.println();
+  Serial.print(F("Power Config Cluster attribute ID "));
+  Serial.print(attributeID,HEX);
+  Serial.print(F(" "));
+  
+  if (frmType == 0x00 && cmdID == 0x00 && attributeID == 0x0020)                // frmType = 0x00 (General Command Frame see Table 2.9 on P16 of ZCL)
+  { 
+     Serial.print(F("(Battery Voltage) "));
+     Send20Response(50, 0x0020, seqNum);
+     return;
+  }
+  Serial.println(F("Invalid type/command/attribute!"));
+}
+
+
+void clstr_DeviceTemperature(byte endPoint, byte frmType, byte seqNum, byte cmdID, word attributeID) __attribute__((weak));
+void clstr_DeviceTemperature(byte endPoint, byte frmType, byte seqNum, byte cmdID, word attributeID)
 {
   Serial.println(FuncNotImplemented); 
 }
 
-void clstr_PowerConfiguration(byte frmType, byte seqNum, byte cmdID, word attributeID) __attribute__((weak));
-void clstr_PowerConfiguration(byte frmType, byte seqNum, byte cmdID, word attributeID)
-{
-  Serial.println(FuncNotImplemented); 
-}
 
-void clstr_DeviceTemperature(byte frmType, byte seqNum, byte cmdID, word attributeID) __attribute__((weak));
-void clstr_DeviceTemperature(byte frmType, byte seqNum, byte cmdID, word attributeID)
-{
-  Serial.println(FuncNotImplemented); 
-}
 
-void clstr_OnOff(byte frmType, byte seqNum, byte cmdID, word attributeID) __attribute__((weak));
-void clstr_OnOff(byte frmType, byte seqNum, byte cmdID, word attributeID)
+bool get_OnOff(byte endPoint) __attribute__((weak));
+bool get_OnOff(byte endPoint)
 {
   Serial.println(FuncNotImplemented);  
 }
 
-void clstr_Temperature(byte frmType, byte seqNum, byte cmdID, word attributeID) __attribute__((weak));
-void clstr_Temperature(byte frmType, byte seqNum, byte cmdID, word attributeID)
+void set_OnOff(byte endPoint, bool On) __attribute__((weak));
+void set_OnOff(byte endPoint, bool On)
+{
+  Serial.println(FuncNotImplemented);  
+}
+
+void toggle_OnOff(byte endPoint) __attribute__((weak));
+void toggle_OnOff(byte endPoint)
+{
+  Serial.println(FuncNotImplemented);  
+}
+
+void clstr_OnOff(byte endPoint, byte frmType, byte seqNum, byte cmdID, word attributeID)                                                            // Cluster 0x0006 On/Off
+{
+  //***************************************
+  // ZCL Cluster 0x0006 On/Off Cluster
+  // Section 3.8 on page 125 of ZCL
+  //***************************************
+  Serial.println();
+  Serial.print(F("OnOff Cluster attribute ID "));
+  Serial.print(attributeID,HEX);
+  Serial.print(F(" "));
+  
+  if (frmType == 0x00 && cmdID == 0x00 && attributeID == 0x00)                // frmType = 0x00 (General Command Frame see Table 2.9 on P16 of ZCL)
+  {
+    Serial.print(F("(OnOff) "));
+    Send10Response(get_OnOff(endPoint), 0x0000, seqNum);
+    return;
+  }
+
+  if (frmType == 0x01 && cmdID == 0x00 && attributeID == 0x00)                // Set device Off -- P126 Section 3.8.2.3 of ZCL
+  {
+    set_OnOff(endPoint, false);
+    sendDefaultResponse(cmdID, 0x00, 0x01);                                   // Send default response back to originator of command
+    return;
+  }
+
+  if (frmType == 0x01 && cmdID == 0x01 && attributeID == 0x00)                // Set device On
+  {
+    set_OnOff(endPoint, true);
+    sendDefaultResponse(cmdID, 0x00, 0x01);                                   // Send default response back to originator of command
+    return;
+  }
+
+  if (frmType == 0x01 && cmdID == 0x02 && attributeID == 0x00)                // Toggle device
+  {
+     toggle_OnOff(endPoint);
+    sendDefaultResponse(cmdID, 0x00, 0x01);                                   // Send Default response back to originator of command
+    return;
+  }
+  Serial.println(F("Invalid type/command/attribute!"));
+}
+
+
+
+float get_Temperature(byte endPoint) __attribute__((weak));
+float get_Temperature(byte endPoint)
+{
+  Serial.println(FuncNotImplemented);  
+}
+
+void clstr_Temperature(byte endPoint, byte frmType, byte seqNum, byte cmdID, word attributeID)                                                            // Cluster 0x0402 Temp
+{
+  //***************************************
+  // ZCL Cluster 0x0006 On/Off Cluster
+  // Section 3.8 on page 125 of ZCL
+  //***************************************
+  Serial.println();
+  Serial.print(F("Temperature Cluster attribute ID "));
+  Serial.print(attributeID,HEX);
+  Serial.print(F(" "));
+  
+  if (frmType == 0x00 && cmdID == 0x00 && attributeID == 0x00)                // frmType = 0x00 (General Command Frame see Table 2.9 on P16 of ZCL)
+  {   
+    Serial.print(F("(Temperature) "));
+    Send29Response(get_Temperature(endPoint) * 100, 0x0000, seqNum);
+    return;
+  }
+  Serial.println(F("Invalid type/command/attribute!"));
+}
+
+
+
+float get_Pressure(byte endPoint) __attribute__((weak));
+float get_Pressure(byte endPoint)
 {
   Serial.println(FuncNotImplemented); 
 }
 
-void clstr_Pressure(byte frmType, byte seqNum, byte cmdID, word attributeID) __attribute__((weak));
-void clstr_Pressure(byte frmType, byte seqNum, byte cmdID, word attributeID)
+void clstr_Pressure(byte endPoint, byte frmType, byte seqNum, byte cmdID, word attributeID)                                                            // Cluster 0x0402 Temp
+{
+  //***************************************
+  // ZCL Cluster 0x0006 On/Off Cluster
+  // Section 3.8 on page 125 of ZCL
+  //***************************************
+  Serial.println();
+  Serial.print(F("Pressure Cluster attribute ID "));
+  Serial.print(attributeID,HEX);
+  Serial.print(F(" "));
+  
+  if (frmType == 0x00 && cmdID == 0x00 && attributeID == 0x00)                // frmType = 0x00 (General Command Frame see Table 2.9 on P16 of ZCL)
+  { 
+    Serial.print(F("(Pressure) "));
+    Send29Response(get_Pressure(endPoint), 0x0000, seqNum);
+    return;
+  }
+  Serial.println(F("Invalid type/command/attribute!"));
+}
+
+
+
+float get_Humidity(byte endPoint) __attribute__((weak));
+float get_Humidity(byte endPoint)
 {
   Serial.println(FuncNotImplemented); 
 }
 
-void clstr_Humidity(byte frmType, byte seqNum, byte cmdID, word attributeID) __attribute__((weak));
-void clstr_Humidity(byte frmType, byte seqNum, byte cmdID, word attributeID)
+void clstr_Humidity(byte endPoint, byte frmType, byte seqNum, byte cmdID, word attributeID)                                                            // Cluster 0x0402 Temp
 {
-  Serial.println(FuncNotImplemented); 
+  //***************************************
+  // ZCL Cluster 0x0006 On/Off Cluster
+  // Section 3.8 on page 125 of ZCL
+  //***************************************
+  Serial.println();
+  Serial.print(F("Humidity Cluster attribute ID "));
+  Serial.print(attributeID,HEX);
+  Serial.print(F(" "));
+
+  if (frmType == 0x00 && cmdID == 0x00 && attributeID == 0x00)                // frmType = 0x00 (General Command Frame see Table 2.9 on P16 of ZCL)
+  { 
+    Serial.print(F("(Humidity) "));
+    Send21Response(get_Humidity(endPoint) * 100, 0x0000, seqNum);
+    return;
+  }
+  Serial.println(F("Invalid type/command/attribute!"));
 }
+
 
 void ZCLpkt()
 {
@@ -632,6 +909,7 @@ void ZCLpkt()
   cmdID = byte(zb._PktData()[2]);                                             // Command ID Byte P16 of ZCL
   attributeID = byte(zb._PktData()[4]);                                       // Attribute ID Word(little endian) P126 of ZCL
   attributeID = (attributeID << 8) + byte(zb._PktData()[3]);       
+  byte endPoint = zb._PktDEP();
   
   switch (int(zb._PktCluster()))
   {
@@ -644,23 +922,23 @@ void ZCLpkt()
       break;
       
     case 0x0002:
-      clstr_DeviceTemperature(frmType, seqNum, cmdID, attributeID);                                                          // On/Off Cluster Page 125 of ZigBee Cluster Library
+      clstr_DeviceTemperature(endPoint, frmType, seqNum, cmdID, attributeID);                                                          // On/Off Cluster Page 125 of ZigBee Cluster Library
       break;
         
     case 0x0006:
-      clstr_OnOff(frmType, seqNum, cmdID, attributeID);                                                          // On/Off Cluster Page 125 of ZigBee Cluster Library
+      clstr_OnOff(endPoint, frmType, seqNum, cmdID, attributeID);                                                          // On/Off Cluster Page 125 of ZigBee Cluster Library
       break;
 
     case 0x0402:
-      clstr_Temperature(frmType, seqNum, cmdID, attributeID);                                                          // On/Off Cluster Page 125 of ZigBee Cluster Library
+      clstr_Temperature(endPoint, frmType, seqNum, cmdID, attributeID);                                                          // On/Off Cluster Page 125 of ZigBee Cluster Library
       break;
 
     case 0x0403:
-      clstr_Pressure(frmType, seqNum, cmdID, attributeID);                                                          // On/Off Cluster Page 125 of ZigBee Cluster Library
+      clstr_Pressure(endPoint, frmType, seqNum, cmdID, attributeID);                                                          // On/Off Cluster Page 125 of ZigBee Cluster Library
       break;
 
     case 0x0405:
-      clstr_Humidity(frmType, seqNum, cmdID, attributeID);                                                          // On/Off Cluster Page 125 of ZigBee Cluster Library
+      clstr_Humidity(endPoint, frmType, seqNum, cmdID, attributeID);                                                          // On/Off Cluster Page 125 of ZigBee Cluster Library
       break;
     
     default: Serial.println(F("** ZCLpkt received but there is no valid handler! **"));
@@ -674,7 +952,7 @@ void ZCLpkt()
 // ------------------------
 void Send10Response(bool Value, int attribute, byte seqNum)   
 {
-    if (BatteryPowered) WakexBee();
+    if (BatteryPowered) WakexBee(false);
   
     memset(Buffer, 0 , BufferSize);                                           // Read attributes
     Buffer[0] = 0x18;                                                         // Frame Control 0x18 = direction is from server to client, disable default response P14 of ZCL
@@ -697,7 +975,7 @@ void Send10Response(bool Value, int attribute, byte seqNum)
 
 void Send20Response(byte Value, int attribute, byte seqNum)   
 {
-    if (BatteryPowered) WakexBee();
+    if (BatteryPowered) WakexBee(false);
   
     memset(Buffer, 0 , BufferSize);                                           // Read attributes
     Buffer[0] = 0x18;                                                         // Frame Control 0x18 = direction is from server to client, disable default response P14 of ZCL
@@ -720,7 +998,7 @@ void Send20Response(byte Value, int attribute, byte seqNum)
 
 void Send21Response(unsigned int Value, int attribute, byte seqNum)   
 {
-    if (BatteryPowered) WakexBee();
+    if (BatteryPowered) WakexBee(false);
   
     memset(Buffer, 0 , BufferSize);                                           // Read attributes
     Buffer[0] = 0x18;                                                         // Frame Control 0x18 = direction is from server to client, disable default response P14 of ZCL
@@ -744,7 +1022,7 @@ void Send21Response(unsigned int Value, int attribute, byte seqNum)
 
 void Send29Response(int Value, int attribute, byte seqNum)   
 {
-    if (BatteryPowered) WakexBee();
+    if (BatteryPowered) WakexBee(WakexBee);
   
     memset(Buffer, 0 , BufferSize);                                           // Read attributes
     Buffer[0] = 0x18;                                                         // Frame Control 0x18 = direction is from server to client, disable default response P14 of ZCL
@@ -768,7 +1046,7 @@ void Send29Response(int Value, int attribute, byte seqNum)
 
 void Send30Response(int Value, int attribute, byte seqNum)   
 {
-    if (BatteryPowered) WakexBee();
+    if (BatteryPowered) WakexBee(false);
   
     memset(Buffer, 0 , BufferSize);                                           // Read attributes
     Buffer[0] = 0x18;                                                         // Frame Control 0x18 = direction is from server to client, disable default response P14 of ZCL
@@ -791,7 +1069,7 @@ void Send30Response(int Value, int attribute, byte seqNum)
 
 void Send42Response(char * Value, int attribute, byte seqNum)   
 { 
-    if (BatteryPowered) WakexBee();
+    if (BatteryPowered) WakexBee(false);
   
     int StrLen = 0;
     
@@ -826,7 +1104,7 @@ void sendDefaultResponse(byte CmdID, byte Status, byte EndPoint)
   // Status = Byte size value specifies either Success (0x00) or the nature of the error see Table 2.17 on page 67 of ZigBee Cluster Library
   // EndPoint = Byte size value of the EndPoint this response is for
   //***************************************
-  if (BatteryPowered) WakexBee();
+  if (BatteryPowered) WakexBee(false);
   
   memset(Buffer, 0 , BufferSize);                                             // Clear Buffer
   Buffer[0] = 0x18;                                                           // Frame Control 0x18 = direction is from server to client, disable default response P14 of ZCL
@@ -847,13 +1125,12 @@ void sendDefaultResponse(byte CmdID, byte Status, byte EndPoint)
 // ------------------------
 // ZigBee Cluster reports
 // ------------------------
-void SendOnOffReport(boolean Value)
+void SendOnOffReport(byte endPoint, boolean Value)
 {
-  Send10Report(Value, 0x0006, 0x0000);
+  Send10Report(endPoint, Value, 0x0006, 0x0000);
 }
 
-
-void SendTemperatureReport(float Value)
+void SendTemperatureReport(byte endPoint, float Value)
 {
   if (Value == NAN) return;
   
@@ -861,7 +1138,7 @@ void SendTemperatureReport(float Value)
   
   if ((abs(Temperature - old_Temperature) >= 5) || (TempSensor_Report >= Sensor_ReportFreq))
   {  
-    Send29Report(Temperature, 0x0402, 0x0000);
+    Send29Report(endPoint, Temperature, 0x0402, 0x0000);
     old_Temperature = Temperature;
     TempSensor_Report = 0;
   }
@@ -869,7 +1146,7 @@ void SendTemperatureReport(float Value)
   TempSensor_Report++;
 }
 
-void SendPressureReport(float Value)
+void SendPressureReport(byte endPoint, float Value)
 {
   if (Value == NAN) return;
   
@@ -877,7 +1154,7 @@ void SendPressureReport(float Value)
      
   if ((abs(Pressure - old_Pressure) >= 5) || (PressureSensor_Report >= Sensor_ReportFreq))
   {
-    Send29Report(Pressure, 0x0403, 0x0000);
+    Send29Report(endPoint, Pressure, 0x0403, 0x0000);
     old_Pressure = Pressure;
     PressureSensor_Report = 0;
   }
@@ -885,7 +1162,7 @@ void SendPressureReport(float Value)
   PressureSensor_Report++;
 }
 
-void SendHumidityReport(float Value)
+void SendHumidityReport(byte endPoint, float Value)
 {
   if (Value == NAN) return;
   
@@ -893,7 +1170,7 @@ void SendHumidityReport(float Value)
   
   if ((abs(Humidity - old_Humidity) >= 5) || (HumiditySensor_Report >= Sensor_ReportFreq))
   {
-    Send21Report(Humidity, 0x0405, 0x0000);
+    Send21Report(endPoint, Humidity, 0x0405, 0x0000);
     old_Humidity = Humidity;
     HumiditySensor_Report = 0;
   }
@@ -906,14 +1183,14 @@ void SendHumidityReport(float Value)
 // ----------------------  
 // ZigBee Cluster reports
 // ----------------------
-void Send10Report(int Value, int cluster, int attribute)  
+void Send10Report(byte endPoint, int Value, int cluster, int attribute)  
 {
   //***************************************
   // Reports boolean value (1 or 0)
   //
   // Destinations are held in the xBee's Binding table
   //***************************************
-  if (BatteryPowered) WakexBee();
+  if (BatteryPowered) WakexBee(false);
         
   memset(Buffer, 0, BufferSize);
   Buffer[0] = 0x18;                                                           // Frame Control 0x10 = direction is from server to client, disable default response P14 of ZCL
@@ -927,14 +1204,14 @@ void Send10Report(int Value, int cluster, int attribute)
 
   Buffer[6] = Value;                                                          // Attribute Value (0 = off, 1 = on)
 
-  zb.TX_Indirect(0x01, 0x0104, cluster, Buffer, 7);                            // TX_Indirect(sEP, Prfl, Clstr, BuffAdd, BuffSize)
+  zb.TX_Indirect(endPoint, 0x0104, cluster, Buffer, 7);                            // TX_Indirect(sEP, Prfl, Clstr, BuffAdd, BuffSize)
   Serial.print(F("Boolean report sent:"));
   if (Value == true) Serial.println(F("True")); else Serial.println(F("False"));
 }
 
-void Send21Report(unsigned int Value, int cluster, int attribute)   
+void Send21Report(byte endPoint, unsigned int Value, int cluster, int attribute)   
 { 
-  if (BatteryPowered) WakexBee();
+  if (BatteryPowered) WakexBee(false);
   
   memset(Buffer, 0 , BufferSize);                                           // Read attributes
   Buffer[0] = 0x18;                                                           // Frame Control 0x18 = direction is from server to client, disable default response P14 of ZCL
@@ -949,14 +1226,14 @@ void Send21Report(unsigned int Value, int cluster, int attribute)
   Buffer[6] = lowByte(Value);                                             // Attribute Data Field in this case 0x00 = Off, see Table 3.40 on page 126 of ZCL. Set the on / off status based on pin
   Buffer[7] = highByte(Value);                                             // Attribute Data Field in this case 0x00 = Off, see Table 3.40 on page 126 of ZCL. Set the on / off status based on pin
 
-  zb.TX_Indirect(0x01, 0x0104, cluster, Buffer, 8);                            // TX_Indirect(sEP, Prfl, Clstr, BuffAdd, BuffSize)
+  zb.TX_Indirect(endPoint, 0x0104, cluster, Buffer, 8);                            // TX_Indirect(sEP, Prfl, Clstr, BuffAdd, BuffSize)
   Serial.print(F("uint16 report sent:"));
   Serial.println(Value);
 }
 
-void Send29Report(int Value, int cluster, int attribute)   
+void Send29Report(byte endPoint, int Value, int cluster, int attribute)   
 {
-  if (BatteryPowered) WakexBee();
+  if (BatteryPowered) WakexBee(false);
 
   memset(Buffer, 0, BufferSize);
   Buffer[0] = 0x18;                                                           // Frame Control 0x18 = direction is from server to client, disable default response P14 of ZCL
@@ -971,9 +1248,119 @@ void Send29Report(int Value, int cluster, int attribute)
   Buffer[6] = lowByte(Value);                                             // Attribute Data Field in this case 0x00 = Off, see Table 3.40 on page 126 of ZCL. Set the on / off status based on pin
   Buffer[7] = highByte(Value);                                                         // Attribute Value (0 = off, 1 = on)
 
-  zb.TX_Indirect(0x01, 0x0104, cluster, Buffer, 8);                            // TX_Indirect(sEP, Prfl, Clstr, BuffAdd, BuffSize)
+  zb.TX_Indirect(endPoint, 0x0104, cluster, Buffer, 8);                            // TX_Indirect(sEP, Prfl, Clstr, BuffAdd, BuffSize)
   Serial.print(F("int16 report sent:"));
   Serial.println(Value);
+}
+
+
+
+void setup_ZigBee(Stream& port, byte _endpointClusterCount)
+{
+  //***************************************
+  // Setup xBee
+  //***************************************  
+  ConfigurexBee(port);
+  JoinNetwork(); 
+  SetupAddresses();
+  //ResetNetwork();
+  Serial.println(F("XBee setup."));
+  
+  endpointClusterCount = _endpointClusterCount;
+  
+  // Display number of endpoints
+  char EndPointList[ClusterListSize];
+  get_EndPointList(EndPointList); 
+  
+  // Dispaly number of clusters
+  Serial.print(F("Total number of clusters:")); 
+  Serial.println(endpointClusterCount);
+  
+  CheckInboundPackets(false);
+  
+  PollSensors();
+}
+
+void loop_ZigBee()
+{
+  int rxResult = 0;
+  bool Sensor_Check = false; 
+
+  if ((BatteryPowered && (Sensor_LastCheckWake >= Sensor_CheckFreqWake)) ||
+   (millis()-Sensor_LastCheckMillis >= Sensor_CheckFreqMillis) ||
+   (Sensor_RequireRetry))
+  {
+    Sensor_Check = true;
+    Sensor_LastCheckWake = 0;
+    Sensor_LastCheckMillis = millis(); 
+    Sensor_RequireRetry = false;
+  }
+
+  // Check for any unprocessed inboud messages. Process these first
+  rxResult = CheckInboundPackets(false);
+
+  if (Sensor_Check == true)
+    rxResult = PollSensors();
+}
+
+int PollSensors()
+{
+  int rxResult = 0;
+   
+  for (int i = 0; i < endpointClusterCount; i++)
+  {
+    switch (endpointClusters[i].cluster)
+    {
+      case 0x0001:
+        //clstr_PowerConfiguration(frmType, seqNum, cmdID, attributeID);                                                          // Basic Cluster Page 78 of ZigBee Cluster Library
+        break;
+      
+      case 0x0002:
+        //clstr_DeviceTemperature(endPoint, frmType, seqNum, cmdID, attributeID);                                                          // On/Off Cluster Page 125 of ZigBee Cluster Library
+        break;
+        
+      case 0x0006:
+        //clstr_OnOff(endPoint, frmType, seqNum, cmdID, attributeID);                                                          // On/Off Cluster Page 125 of ZigBee Cluster Library
+        break;
+
+      case 0x0402:
+      {
+        float t = get_Temperature(endpointClusters[i].endpoint);
+        if (!isnan(t))
+        {
+          SendTemperatureReport(endpointClusters[i].endpoint, t);
+          rxResult = CheckInboundPackets(true);
+        }
+        else Sensor_RequireRetry = true; 
+      }
+      break;
+
+      case 0x0403:
+      {
+        float p = get_Pressure(endpointClusters[i].endpoint);
+        if (!isnan(p))
+        {
+          SendPressureReport(endpointClusters[i].endpoint, p);
+          rxResult = CheckInboundPackets(true);
+        }
+        else Sensor_RequireRetry = true;
+      }
+      break;
+
+      case 0x0405:
+      {
+        float h = get_Humidity(endpointClusters[i].endpoint);
+        if (!isnan(h))
+        {
+          SendHumidityReport(endpointClusters[i].endpoint, h);
+          rxResult = CheckInboundPackets(true);
+        }
+        else Sensor_RequireRetry = true;
+      }
+      break;
+    }
+  }
+  return rxResult;
 }
 
 
