@@ -91,7 +91,16 @@ void formatDate(char const *date, char const *tm, char *buff)
   buff[15] = 0;
 }
 
-
+void PrintHex(uint8_t *data, uint8_t length)            // prints 8-bit data in hex
+{
+  for (int i=0; i<=length; i++)
+  {
+    Serial.print((uint8_t)data[i] >> 4, HEX);
+    Serial.print((uint8_t)data[i] & 0x0f, HEX);
+    if (i <length) Serial.print(" ");
+  }
+  return;
+}
 
 // ----------------------------------
 // xBee, Network and Reset management
@@ -190,7 +199,7 @@ void LeaveNetwork()
   //***************************************
   Serial.println();
   Serial.print(F("Sending Leave PAN Command:"));
-  Serial.print(zb.ATbyte("CB", 0x04));
+  Serial.print(zb.ATbyte("CB", 0x02));
  // resetXB();
   delay(1000);
 }
@@ -554,7 +563,7 @@ int get_ClustersForEndPoint(byte endPoint, unsigned int *list)
       }
   }
   Serial.print(F("Total number of clusters for endpoint ")); 
-  Serial.println(endPoint);
+  Serial.print(endPoint);
   Serial.print(F(":")); 
   Serial.println(clusterCount);
   return clusterCount;
@@ -607,7 +616,7 @@ void Simple_Desc_req()                                                        //
 
       packetSize = 12;
 
-      for (int i = 0; i < clusterCount * 2; i++)
+      for (int i = 0; i < clusterCount; i++)
       {
         Buffer[packetSize++] = lowByte(ClusterList[i]);
         Buffer[packetSize++] = highByte(ClusterList[i]);
@@ -616,6 +625,10 @@ void Simple_Desc_req()                                                        //
       Buffer[packetSize++] = 0x00;                                                        // Output cluster list. No output clusters
 
       zb.TX(zb._PktIEEEAddHi(), zb._PktIEEEAddLo(), zb._PktNetAdd(), 0, 0, 0, 0x8004, Buffer, packetSize);
+      
+      //Serial.println(packetSize);
+      //PrintHex(Buffer, packetSize);
+      //Serial.println();
   }
    else
    {
@@ -652,7 +665,11 @@ void Active_EP_req()                                                          //
   //Buffer[5] = 0x01;                                                           // EndPoint number
   Buffer[4] = get_EndPointList(EndPointList);                                 // Active EndPoint count only one in this case page 161 of ZBSpec
   memcpy(&Buffer[5], EndPointList, endPointCount);                                       // Copy byte string array into buffer
-  zb.TX(zb._PktIEEEAddHi(), zb._PktIEEEAddLo(), zb._PktNetAdd(), 0, 0, 0, 0x8005, Buffer, 5 +  + endPointCount);
+    
+  zb.TX(zb._PktIEEEAddHi(), zb._PktIEEEAddLo(), zb._PktNetAdd(), 0, 0, 0, 0x8005, Buffer, 5 + endPointCount);
+  
+  //PrintHex(Buffer,5 + endPointCount);
+  //Serial.println();
 }
 
 
@@ -912,6 +929,14 @@ void ZCLpkt()
   attributeID = byte(zb._PktData()[4]);                                       // Attribute ID Word(little endian) P126 of ZCL
   attributeID = (attributeID << 8) + byte(zb._PktData()[3]);       
   byte endPoint = zb._PktDEP();
+  
+  
+  Serial.println();
+  Serial.print(F("ZCL Packet received. Frame type:"));
+  Serial.print(frmType,HEX);
+  Serial.print(F(" Command:"));
+  Serial.println(cmdID,HEX);
+
   
   switch (int(zb._PktCluster()))
   {
@@ -1282,7 +1307,7 @@ void setup_ZigBee(Stream& port, byte _endpointClusterCount, bool _BatteryPowered
   
   CheckInboundPackets(false);
   
-  PollSensors();
+  //PollSensors();
 }
 
 void loop_ZigBee()

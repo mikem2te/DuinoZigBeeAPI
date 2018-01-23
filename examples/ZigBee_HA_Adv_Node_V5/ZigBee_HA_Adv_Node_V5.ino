@@ -1,4 +1,4 @@
-//***********************************************
+  //***********************************************
 // ZigBee-Home Automation Communications v2          
 // Author: Professor Mayhem,
 // Yoyodyne Monkey Works, Inc.
@@ -24,11 +24,11 @@
 //***********************************************
 
 // Define high level hardware connected
-#define BatteryPowered
+//#define BatteryPowered
 //#define BMP280
-#define DHTTYPE DHT11
+//#define DHTTYPE DHT11
 #define xBeeTemp
-#define OnOffButton
+//#define OnOffButton
 
     
 #include <ZigBeeAPI.h>
@@ -40,10 +40,11 @@
 EndpointCluster endpointClusters[]= { 
   {1, cluster_Basic},
   {1, cluster_PowerConfiguration},
-  {1, cluster_OnOff},
-  {1, cluster_Temperature},
-  {1, cluster_RelativeHumidity},
-  {2, cluster_Temperature}
+  {1, 0x0003},
+ // {1, cluster_OnOff},
+  {1, cluster_Temperature}
+//  {1, cluster_RelativeHumidity},
+//  {2, cluster_Temperature}
 }; 
 
 
@@ -135,9 +136,9 @@ Conversation overview of the initial connection to the SmartThings home automati
   extern ZigBeeAPI zb;                
 
   #ifdef BatteryPowered
-    char  Model[] = "Arduino xBee (Battery)";     // ZigBee Basic Device ModelIdentifier 0 to 32 byte char string P79 of ZCL
+    char  Model[] = "Arduino XBee (Battery)";     // ZigBee Basic Device ModelIdentifier 0 to 32 byte char string P79 of ZCL
   #else
-    char  Model[] = "Arduino xBee (Powered)";     // ZigBee Basic Device ModelIdentifier 0 to 32 byte char string P79 of ZCL
+    char  Model[] = "Arduino XBee (Powered)";     // ZigBee Basic Device ModelIdentifier 0 to 32 byte char string P79 of ZCL
   #endif
   char Manufacturer[] = "Arduino";   // ZigBee Basic Device ManufacturerName 0 to 32 bytes
   char SWVersion[] = "1.0.0"; 
@@ -146,7 +147,7 @@ Conversation overview of the initial connection to the SmartThings home automati
 
   unsigned long SensorCheck_RetryMillis = 10000;
   unsigned long SensorCheck_FreqWake = 2; // Wake cycles for sleepy device, ms for non sleepy
-  unsigned long SensorCheck_FreqMillis = 20000; // Wake cycles for sleepy device, ms for non sleepy
+  unsigned long SensorCheck_FreqMillis = 60000; // Wake cycles for sleepy device, ms for non sleepy
 
 
 
@@ -167,10 +168,11 @@ void setup()
   //***************************************
   Serial.begin(9600);
 
-  while (!Serial)
-  {
-    delay(1); // wait for serial port to connect. Needed for native USB port only
-  }
+  //while (!Serial)
+  //{
+  //  delay(1); // wait for serial port to connect. Needed for native USB port only
+  //}
+  
   Serial.println();
   Serial.println(F("On Line."));
   
@@ -215,8 +217,9 @@ void setup()
     dht.begin();
   #endif
     
-
-  attachInterrupt(digitalPinToInterrupt(buttonPin), buttonPressed, CHANGE);
+  #ifdef OnOffButton
+    attachInterrupt(digitalPinToInterrupt(buttonPin), buttonPressed, CHANGE);
+  #endif
 
   Serial1.begin(xBeeBaud);
   
@@ -226,6 +229,8 @@ void setup()
     setup_ZigBee(Serial1, sizeof(endpointClusters) / sizeof(EndpointCluster), false);
   #endif
   now = millis();
+
+  //LeaveNetwork();
 }
 
 
@@ -374,7 +379,9 @@ bool get_OnOff(byte endPoint)
 {
   if (endPoint == 1)
   {
-    return pinState(LEDPin);
+    #ifdef OnOffButton
+      return pinState(LEDPin);
+    #endif  
   }
   return false;
 }
@@ -383,20 +390,22 @@ void set_OnOff(byte endPoint, bool On)
 {
   if (endPoint == 1)
   {
-    if (On)
-    {
-      digitalWrite(LEDPin, HIGH);                                               // Set High
-      Serial.print(F("(OnOff) LED On (Pin "));
-      Serial.print(LEDPin,DEC);
-      Serial.print(F(" set to High)"));
-    }
-    else
-    {
-      digitalWrite(LEDPin, LOW); 
-      Serial.print(F("(OnOff) LED Off (Pin "));
-      Serial.print(LEDPin,DEC);
-      Serial.print(F(" set to ground)"));
-    }
+    #ifdef OnOffButton
+      if (On)
+      {
+        digitalWrite(LEDPin, HIGH);                                               // Set High
+        Serial.print(F("(OnOff) LED On (Pin "));
+        Serial.print(LEDPin,DEC);
+        Serial.print(F(" set to High)"));
+      }
+      else
+      {
+        digitalWrite(LEDPin, LOW); 
+        Serial.print(F("(OnOff) LED Off (Pin "));
+        Serial.print(LEDPin,DEC);
+        Serial.print(F(" set to ground)"));
+      }
+    #endif  
   }
 }
 
@@ -404,10 +413,12 @@ void toggle_OnOff(byte endPoint)
 {
   if (endPoint == 1)
   {
-    digitalWrite(LEDPin,!pinState(LEDPin));                                   // Toggle Output
-    Serial.print(F("(OnOff) LED Toggled (Pin "));
-    Serial.print(LEDPin,DEC);
-    Serial.print(F(" toggled)"));  
+    #ifdef OnOffButton
+      digitalWrite(LEDPin,!pinState(LEDPin));                                   // Toggle Output
+      Serial.print(F("(OnOff) LED Toggled (Pin "));
+      Serial.print(LEDPin,DEC);
+      Serial.print(F(" toggled)")); 
+    #endif 
   }
 }
 
@@ -426,15 +437,16 @@ float get_Temperature(byte endPoint)
       Serial.print(F("DHT Sensor"));
       t = dht.readTemperature();
     #endif  
+
+    #ifdef xBeeTemp
+      Serial.print(F("XBee Sensor"));
+      t = Get_xBeeTemp(); // + random(1, 5);
+    #endif
   }
 
   if (endPoint == 2)
   {
-    #ifdef xBeeTemp
-      Serial.print(F("XBee Sensor"));
-      t = Get_xBeeTemp();
-    //t = 0;
-    #endif
+
   }
 
   Serial.print(F(", Getting Temp:"));
