@@ -24,9 +24,11 @@
 //***********************************************
 
 // Define high level hardware connected
-//#define BatteryPowered
+#define BatteryPowered
 //#define BMP280
-//#define DHTTYPE DHT11
+#define Si7021
+// DHT11
+//#define DHTTYPE DHT22
 #define xBeeTemp
 //#define OnOffButton
 
@@ -41,10 +43,10 @@ EndpointCluster endpointClusters[]= {
   {1, cluster_Basic},
   {1, cluster_PowerConfiguration},
   {1, 0x0003},
- // {1, cluster_OnOff},
-  {1, cluster_Temperature}
-//  {1, cluster_RelativeHumidity},
-//  {2, cluster_Temperature}
+  {1, cluster_OnOff},
+  {1, cluster_Temperature},
+ // {1, cluster_RelativeHumidity},
+  {2, cluster_RelativeHumidity}
 }; 
 
 
@@ -73,8 +75,11 @@ EndpointCluster endpointClusters[]= {
   DHT dht(DHTPIN, DHTTYPE);
 #endif
 
-
-#define _DEBUG 0
+#ifdef Si7021
+  #include "Adafruit_Si7021.h"
+  #define TempSensorPowerPin 7
+  Adafruit_Si7021 sensor = Adafruit_Si7021();
+#endif
 
 /*
 Hardware requirements:
@@ -148,10 +153,9 @@ Conversation overview of the initial connection to the SmartThings home automati
   unsigned long SensorCheck_RetryMillis = 10000;
   unsigned long SensorCheck_FreqWake = 2; // Wake cycles for sleepy device, ms for non sleepy
   unsigned long SensorCheck_FreqMillis = 60000; // Wake cycles for sleepy device, ms for non sleepy
+  unsigned long SensorStabilisationAfterWake = 1500;
 
-
-
-  
+  extern volatile bool xBeeIsAwake;
 
 // Interrupt Service Routines and Sleep management
 // -----------------------------------------------
@@ -166,7 +170,7 @@ void setup()
   //***************************************
   // Start Serial Monitor Communications
   //***************************************
-  Serial.begin(9600);
+  Serial.begin(115200);
 
   //while (!Serial)
   //{
@@ -281,100 +285,6 @@ void loop()
   #endif
 }
 
-/*
-void loop()
-{
-  //***************************************
-  // loop() waits for inbound data from the ZigBee network and responds based on the packet's profile number
-  // If the profile number in the received packet is 0x0000 then the packet is a ZigBee Device Object (ZDO) packet
-  // If the profile number is not 0x0000 then the packet is a ZigBee Cluster Library (ZCL) packet
-  // The packet is also printed to the screen formatted so you can see addressing and payload details.
-  //***************************************
-
-  int rxResult = 0;
-  bool Sensor_Check = false; 
-
-  
-  if (BatteryPowered)
-  {
-    if (!xBeeIsAwake)
-    {
-      Serial.println(F("xBee is Sleeping"));
-      digitalWrite(xBeeRTS, HIGH);
-      Serial.println(F("Arduino Sleeping, waiting for awake signal"));
-      sleepNow();
-      if (xBeeIsAwake)
-        Serial.println(F("XBee is Awake, Arduino Waking"));
-      else   
-        Serial.println(F("Arduino Waking, assume Arduino interrupt"));  
-      digitalWrite(xBeeRTS, LOW);
-      Sensor_LastCheckWake++;
-    }
-  }
-  else
-  {
-    Serial.println();
-    Serial.println(F("Waiting for packet"));
-  }
-
-  
- // do                                                                          // Begin polling the button and checking for incoming packets
- // {
-    Sensor_Check = false;
-
-    if ((BatteryPowered && (Sensor_LastCheckWake >= Sensor_CheckFreqWake)) ||
-       (millis()-Sensor_LastCheckMillis >= Sensor_CheckFreqMillis) ||
-       (Sensor_RequireRetry))
-    {
-      Sensor_Check = true;
-      Sensor_LastCheckWake = 0;
-      Sensor_LastCheckMillis = millis(); 
-      Sensor_RequireRetry = false;
-    }
-
-
-    // Check for any unprocessed inboud messages. Process these first
-    rxResult = CheckInboundPackets(false);
-
-    // On Off cluster button check
-    #ifdef OnOffCluster
-      if ((digitalRead(buttonPin) == false) && ((millis()-now)>100) && (buttonReleased == true)) // Check if the button is being pressed
-      {
-        #ifdef OnOffClusterMomentary
-          digitalWrite(LEDPin,!pinState(LEDPin));                             // Toggle Output
-        #else  
-          digitalWrite(LEDPin,HIGH);                                          // Set high if non momentary operation
-        #endif  
-        
-        SendOnOffReport(1, pinState(LEDPin));                              // Let SmartThings know about it
-      
-        buttonReleased = false;                                               // Don't allow anymore toggling until button is released and pressed again
-
-        now = millis();                                                       // Save the current time for debouncing
-      }
-      if (digitalRead(buttonPin) == true)                                     // Check if the button has been released
-      {
-        #ifndef OnOffClusterMomentary
-          if (pinState(LEDPin))
-          {
-            digitalWrite(LEDPin,!pinState(LEDPin));                           // Toggle Output
-            SendOnOffReport(1, pinState(LEDPin));                          // Let SmartThings know about it
-          }
-        #endif  
-        buttonReleased = true;
-      };             
-    #endif
-
-    if (Sensor_Check == true)
-      rxResult = PollSensors();
-
-//  } while (BatteryPowered && rxResult != -9);                                                   // Keep checking for packets until there is no timeout while checking
-  
-
-}
-*/
-
-
 bool get_OnOff(byte endPoint)
 {
   if (endPoint == 1)
@@ -435,18 +345,33 @@ float get_Temperature(byte endPoint)
     
     #ifdef DHTTYPE
       Serial.print(F("DHT Sensor"));
+      Serial.flush();
+      if (xBeeIsAwake)
+      {
+        while (xBeeIsAwake) { } // DHT has poor voltage stability so wait until the XBee is off
+        delay(500);
+      }
       t = dht.readTemperature();
     #endif  
 
+    #ifdef Si7021
+      Serial.print(F("Si7021 Sensor"));
+      Serial.flush();
+      t = sensor.readTemperature();
+    #endif
+    
     #ifdef xBeeTemp
-      Serial.print(F("XBee Sensor"));
-      t = Get_xBeeTemp(); // + random(1, 5);
+      //Serial.print(F("XBee Sensor"));
+      //t = Get_xBeeTemp(); // + random(1, 5);
     #endif
   }
 
   if (endPoint == 2)
   {
-
+    #ifdef xBeeTemp
+      Serial.print(F("XBee Sensor"));
+      t = Get_xBeeTemp(); // + random(1, 5);
+    #endif
   }
 
   Serial.print(F(", Getting Temp:"));
@@ -456,6 +381,7 @@ float get_Temperature(byte endPoint)
 
 float get_Pressure(byte endPoint)
 {
+  Serial.flush();
   float p = NAN;
   
   #ifdef BMP280
@@ -474,14 +400,21 @@ float get_Humidity(byte endPoint)
   
   #ifdef DHTTYPE
     Serial.print(F("DHT Sensor"));
-    h = dht.readHumidity();
-    if (isnan(h))
+    Serial.flush();
+    if (xBeeIsAwake)
     {
-      delay(2500);
-      h = dht.readHumidity();
+      while (xBeeIsAwake) { } // DHT has poor voltage stability so wait until the XBee is off
+      delay(500);
     }
+    h = dht.readHumidity();
   #endif 
 
+    #ifdef Si7021
+      Serial.print(F("Si7021 Sensor"));
+      Serial.flush();
+      h = sensor.readHumidity();
+    #endif
+    
   Serial.print(F(", Getting Humidity:"));
   Serial.println(h);
   return h;

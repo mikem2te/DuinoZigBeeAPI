@@ -43,6 +43,7 @@ void ResetNetwork();
 void LeaveNetwork();
 void resetXB();
 void Tx_Device_annce();
+byte GetJoinStatus();
 void JoinNetwork();
 void SetupAddresses();
 void WakexBee(bool force);
