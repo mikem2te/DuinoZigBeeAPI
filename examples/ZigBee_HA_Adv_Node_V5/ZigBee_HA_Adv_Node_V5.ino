@@ -25,10 +25,21 @@
 
 // Define high level hardware connected
 #define BatteryPowered
+
+// Bosch BME280 / BMP280
 //#define BMP280
-#define Si7021
-// DHT11
+
+// Silicon Labs Si7021
+//#define Si7021
+
+// DHT temperatue and humidity sensors. Types are DHT11 or DHT22
+//#define DHTTYPE DHT11
 //#define DHTTYPE DHT22
+
+// Dallas one wire sensors 18B20
+#define DS182x
+
+// XBee built in temperature sensor. This suffers from self heating.
 #define xBeeTemp
 //#define OnOffButton
 
@@ -64,8 +75,8 @@ EndpointCluster endpointClusters[]= {
 // BMP setup
 #ifdef BMP280
   #include <Adafruit_BMP280.h>
-  Adafruit_BMP280 bmp; // I2C
   #define TempSensorPowerPin 7
+  Adafruit_BMP280 bmp; // I2C
 #endif
 
 #ifdef DHTTYPE
@@ -79,6 +90,16 @@ EndpointCluster endpointClusters[]= {
   #include "Adafruit_Si7021.h"
   #define TempSensorPowerPin 7
   Adafruit_Si7021 sensor = Adafruit_Si7021();
+#endif
+
+#ifdef DS182x
+  #include <OneWire.h>
+  #include <DallasTemperature.h>
+  #define ONE_WIRE_BUS 6
+  #define TempSensorPowerPin 7
+  OneWire oneWire(ONE_WIRE_BUS);
+  DallasTemperature sensors(&oneWire);
+  DeviceAddress deviceAddress;
 #endif
 
 /*
@@ -220,6 +241,14 @@ void setup()
   #ifdef DHTTYPE
     dht.begin();
   #endif
+
+  #ifdef DS182x
+    sensors.begin();
+    Serial.print(F("Found DS182x "));
+    Serial.print(sensors.getDeviceCount(), DEC);
+    Serial.println(F(" devices."));
+    if (!sensors.getAddress(deviceAddress, 0)) Serial.println(F("Unable to find address for Device 0")); 
+  #endif
     
   #ifdef OnOffButton
     attachInterrupt(digitalPinToInterrupt(buttonPin), buttonPressed, CHANGE);
@@ -359,7 +388,12 @@ float get_Temperature(byte endPoint)
       Serial.flush();
       t = sensor.readTemperature();
     #endif
-    
+
+    #ifdef DS182x
+      sensors.requestTemperatures(); // Send the command to get temperatures
+      t = sensors.getTempC(deviceAddress);
+    #endif
+          
     #ifdef xBeeTemp
       //Serial.print(F("XBee Sensor"));
       //t = Get_xBeeTemp(); // + random(1, 5);
