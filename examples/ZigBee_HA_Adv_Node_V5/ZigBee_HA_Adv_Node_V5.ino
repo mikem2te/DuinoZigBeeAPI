@@ -23,33 +23,19 @@
 // 
 //***********************************************
 
-// Define high level hardware connected
-#define BatteryPowered
-
-// Bosch BME280 / BMP280
-//#define BMP280
-
-// Silicon Labs Si7021
-//#define Si7021
-
-// DHT temperatue and humidity sensors. Types are DHT11 or DHT22
-//#define DHTTYPE DHT11
-//#define DHTTYPE DHT22
-
-// Dallas one wire sensors 18B20
-#define DS182x
-
-// XBee built in temperature sensor. This suffers from self heating.
-#define xBeeTemp
-//#define OnOffButton
-
-    
 #include <ZigBeeAPI.h>
 #include "ZigBee.h"
 #include <SoftwareSerial.h>
 #include <avr/sleep.h>
 
 
+// Is the device battery powered
+// -----------------------------
+#define BatteryPowered
+
+
+// Cluster definitions
+// -------------------
 EndpointCluster endpointClusters[]= { 
   {1, cluster_Basic},
   {1, cluster_PowerConfiguration},
@@ -59,6 +45,47 @@ EndpointCluster endpointClusters[]= {
  // {1, cluster_RelativeHumidity},
   {2, cluster_RelativeHumidity}
 }; 
+
+
+// Bosch BME280 / BMP280
+// ---------------------
+//#define BMP280
+//#define TempSensorPowerPin 7
+
+
+// Silicon Labs Si7021
+// -------------------
+//#define Si7021
+//#define TempSensorPowerPin 7
+
+  
+// DHT temperatue and humidity sensors. Types are DHT11 or DHT22
+// -------------------------------------------------------------
+//#define DHTTYPE DHT11
+#define DHTTYPE DHT22
+#define DHTPIN 6 
+#define TempSensorPowerPin 7
+
+  
+// Dallas one wire sensors 18B2x
+// -----------------------------
+//#define DS182x
+//#define ONE_WIRE_BUS 6
+//#define TempSensorPowerPin 7
+
+  
+// XBee built in temperature sensor. This suffers from self heating
+// ----------------------------------------------------------------
+#define xBeeTemp
+
+
+//#define OnOffButton
+
+    
+
+
+
+
 
 
 // On Off setup
@@ -73,34 +100,39 @@ EndpointCluster endpointClusters[]= {
 
 
 // BMP setup
+// ---------
 #ifdef BMP280
   #include <Adafruit_BMP280.h>
-  #define TempSensorPowerPin 7
   Adafruit_BMP280 bmp; // I2C
 #endif
 
+
+// DHT sensor setup
+// ----------------
 #ifdef DHTTYPE
   #include "DHT.h"
-  #define DHTPIN 6 
-  #define TempSensorPowerPin 7
   DHT dht(DHTPIN, DHTTYPE);
 #endif
 
+
+// Silicon Labs Si7021 setup
+// -------------------------
 #ifdef Si7021
   #include "Adafruit_Si7021.h"
-  #define TempSensorPowerPin 7
   Adafruit_Si7021 sensor = Adafruit_Si7021();
 #endif
 
+
+// Dallas one wire sensors 18B2x setup
+// -----------------------------------
 #ifdef DS182x
   #include <OneWire.h>
   #include <DallasTemperature.h>
-  #define ONE_WIRE_BUS 6
-  #define TempSensorPowerPin 7
   OneWire oneWire(ONE_WIRE_BUS);
   DallasTemperature sensors(&oneWire);
   DeviceAddress deviceAddress;
 #endif
+
 
 /*
 Hardware requirements:

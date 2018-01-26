@@ -18,6 +18,10 @@ struct EndpointCluster {
    unsigned int cluster;
 };
 
+extern const char Model[] PROGMEM; 
+extern const char Manufacturer[] PROGMEM;
+extern const char SWVersion[] PROGMEM;
+ 
 const byte ClusterListSize = 40;
 const byte BufferSize = 75;
 
@@ -32,12 +36,12 @@ void printByteData(uint8_t Byte);
 void formatDate(char const *date, char const *tm, char *buff);
 
 
-// xBee, Network and Reset management
+// XBee, Network and Reset management
 void setup_ZigBee(Stream& port, byte _endpointClusterCount, bool _BatteryPowered);
 void loop_ZigBee();
 
-void ConfigurexBee(Stream& port);
-void xBeeAwakeChange();
+void ConfigureXBee(Stream& port);
+void XBeeAwakeChange();
 void sleepNow();
 void ResetNetwork();
 void LeaveNetwork();
@@ -46,8 +50,8 @@ void Tx_Device_annce();
 byte GetJoinStatus();
 void JoinNetwork();
 void SetupAddresses();
-void WakexBee(bool force);
-float Get_xBeeTemp();
+void WakeXBee(bool force);
+float Get_XBeeTemp();
 
 
 // Inbound packet processing
