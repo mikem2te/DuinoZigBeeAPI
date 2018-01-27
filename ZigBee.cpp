@@ -2,7 +2,8 @@
 #include <ZigBeeAPI.h>
 #include <SoftwareSerial.h>
 #include <avr/sleep.h>
-  
+#include "TimerOne.h"
+
 
 const char mths[] PROGMEM = {"Jan01Feb02Mar03Apr04May05Jun06Jul07Aug08Sep09Oct10Nov11Dec12"};
 
@@ -50,6 +51,22 @@ bool Sensor_RequireRetry;
 int old_Temperature;
 unsigned int old_Humidity;
 int old_Pressure;
+
+float clstr_LevelControl_CurrentLevel;
+byte clstr_LevelControl_Level;
+unsigned int clstr_LevelControl_RemainingTime;
+float clstr_LevelControl_Gradient;
+
+float clstr_ColorControl_CurrentHue;
+byte clstr_ColorControl_Hue;
+unsigned int clstr_ColorControl_HueRemainingTime;
+float clstr_ColorControl_HueGradient;
+
+float clstr_ColorControl_CurrentSaturation;
+byte clstr_ColorControl_Saturation;
+unsigned int clstr_ColorControl_SaturationRemainingTime;
+float clstr_ColorControl_SaturationGradient;
+
 
 byte Sensor_ReportFreq = 4; // Wake cycles for sleepy device, ms for non sleepy
 byte TempSensor_Report = 0;
@@ -894,6 +911,268 @@ void clstr_OnOff(byte endPoint, byte frmType, byte seqNum, byte cmdID, word attr
 
 
 
+void clstr_LevelControlSetLevel(byte endPoint, byte level) __attribute__((weak));
+void clstr_LevelControlSetLevel(byte endPoint, byte level)
+{
+  FuncNotImplemented(); 
+}
+
+
+
+void clstr_LevelControl(byte endPoint, byte frmType, byte seqNum, byte cmdID, word attributeID)                                                            // Cluster 0x0006 On/Off
+{
+  //***************************************
+  // ZCL Cluster 0x0006 On/Off Cluster
+  // Section 3.8 on page 125 of ZCL
+  //***************************************
+  Serialprintln();
+  Serialprint(F("LevelControl Cluster attribute ID "));
+  Serialprint(attributeID,HEX);
+  Serialprint(F(" "));
+  
+  if (frmType == 0x00 && cmdID == 0x00 && attributeID == 0x00)                // frmType = 0x00 (General Command Frame see Table 2.9 on P16 of ZCL)
+  {
+    Serialprint(F("(CurrentLevel) "));
+    Send20Response(clstr_LevelControl_CurrentLevel, 0x0000, seqNum);
+    return;
+  }
+  
+  if (frmType == 0x00 && cmdID == 0x00 && attributeID == 0x01)                // frmType = 0x00 (General Command Frame see Table 2.9 on P16 of ZCL)
+  {
+    Serialprint(F("(RemaingTime) "));
+    Send21Response(clstr_LevelControl_RemainingTime, 0x0001, seqNum);
+    return;
+  }
+
+  if (frmType == 0x01 && (cmdID == 0x00 || cmdID == 0x04))                // Move to Level
+  {
+    clstr_LevelControl_Level = byte(zb._PktData()[3]);
+    clstr_LevelControl_RemainingTime = byte(zb._PktData()[5]) * 256 + byte(zb._PktData()[4]); 
+    clstr_LevelControl_Gradient = (clstr_LevelControl_Level - clstr_LevelControl_CurrentLevel) / clstr_LevelControl_RemainingTime;
+    sendDefaultResponse(cmdID, 0x00, 0x01); 
+    return;
+  }
+
+  if (frmType == 0x01 && (cmdID == 0x01 || cmdID == 0x05))                // Move
+  {
+    if (byte(zb._PktData()[3]) == 0)
+    {
+      clstr_LevelControl_Level = 255;
+      clstr_LevelControl_Gradient = byte(zb._PktData()[4]) / 10;
+    }
+    else
+    {
+      clstr_LevelControl_Level = 0;
+      clstr_LevelControl_Gradient = -byte(zb._PktData()[4]) / 10;
+    }
+    clstr_LevelControl_RemainingTime = 0xffff;
+    sendDefaultResponse(cmdID, 0x00, 0x01);                                   // Send default response back to originator of command
+    return;
+  }
+
+  if (frmType == 0x01 && (cmdID == 0x02 || cmdID == 0x06))                // Step
+  {
+    if (byte(zb._PktData()[3]) == 0)
+    {
+      clstr_LevelControl_Level = clstr_LevelControl_CurrentLevel + byte(zb._PktData()[4]);
+    }
+    else
+    {
+      clstr_LevelControl_Level = clstr_LevelControl_CurrentLevel - byte(zb._PktData()[4]);
+    }
+    clstr_LevelControl_RemainingTime = byte(zb._PktData()[6]) * 256 + byte(zb._PktData()[5]); 
+    clstr_LevelControl_Gradient = (clstr_LevelControl_Level - clstr_LevelControl_CurrentLevel) / clstr_LevelControl_RemainingTime;
+    sendDefaultResponse(cmdID, 0x00, 0x01);                                   // Send Default response back to originator of command
+    return;
+  }
+  
+  if (frmType == 0x01 && (cmdID == 0x03 || cmdID == 0x07))                // Stop
+  {
+    clstr_LevelControl_Level = clstr_LevelControl_CurrentLevel;
+    clstr_LevelControl_RemainingTime = 0; 
+    sendDefaultResponse(cmdID, 0x00, 0x01); 
+    return;
+  }
+  Serialprintln(F("Invalid type/command/attribute!"));
+}
+
+
+void clstr_ColorControlSetHueSaturation(byte endPoint, byte hue, byte saturation) __attribute__((weak));
+void clstr_ColorControlSetHueSaturation(byte endPoint, byte hue, byte saturation)
+{
+  FuncNotImplemented(); 
+}
+
+
+void clstr_ColorControl(byte endPoint, byte frmType, byte seqNum, byte cmdID, word attributeID)                                                            // Cluster 0x0006 On/Off
+{
+  //***************************************
+  // ZCL Cluster 0x0006 On/Off Cluster
+  // Section 3.8 on page 125 of ZCL
+  //***************************************
+  Serialprintln();
+  Serialprint(F("ColorControl Cluster attribute ID "));
+  Serialprint(attributeID,HEX);
+  Serialprint(F(" "));
+  
+  if (frmType == 0x00 && cmdID == 0x00 && attributeID == 0x00)                // frmType = 0x00 (General Command Frame see Table 2.9 on P16 of ZCL)
+  {
+    Serialprint(F("(CurrentHue) "));
+    Send20Response(clstr_ColorControl_CurrentHue, 0x0000, seqNum);
+    return;
+  }
+  
+  if (frmType == 0x00 && cmdID == 0x00 && attributeID == 0x0001)                // frmType = 0x00 (General Command Frame see Table 2.9 on P16 of ZCL)
+  {
+    Serialprint(F("(CurrentSaturation) "));
+    Send20Response(clstr_ColorControl_CurrentSaturation, 0x0001, seqNum);
+    return;
+  }
+  
+  if (frmType == 0x00 && cmdID == 0x00 && attributeID == 0x0002)                // frmType = 0x00 (General Command Frame see Table 2.9 on P16 of ZCL)
+  {
+    Serialprint(F("(RemaingTime) "));
+    Send21Response(clstr_LevelControl_RemainingTime, 0x0002, seqNum);
+    return;
+  }
+
+  if (frmType == 0x00 && cmdID == 0x00 && attributeID == 0x0008)                // Set device Off -- P126 Section 3.8.2.3 of ZCL
+  {  
+    Serialprint(F("(ColorMode) "));
+    Send30Response(0, 0x0008, seqNum);                                  // Send default response back to originator of command
+    return;
+  }
+  
+  if (frmType == 0x00 && cmdID == 0x00 && attributeID == 0x4001)                // Set device Off -- P126 Section 3.8.2.3 of ZCL
+  {  
+    Serialprint(F("(EnhancedColorMode) "));
+    Send30Response(0, 0x4001, seqNum);                                  // Send default response back to originator of command
+    return;
+  }
+  
+  if (frmType == 0x00 && cmdID == 0x00 && attributeID == 0x400a)                // Set device Off -- P126 Section 3.8.2.3 of ZCL
+  {  
+    Serialprint(F("(ColorCapabilities) "));
+    Send19Response(1, 0x400a, seqNum);                                  // Send default response back to originator of command
+    return;
+  }
+
+  
+   if (frmType == 0x01 && cmdID == 0x00)                // Move to Hue
+  {
+    clstr_ColorControl_Hue = byte(zb._PktData()[3]);
+    clstr_ColorControl_HueRemainingTime = byte(zb._PktData()[6]) * 256 + byte(zb._PktData()[5]); 
+    clstr_ColorControl_HueGradient = (clstr_ColorControl_Hue - clstr_ColorControl_CurrentHue) / clstr_ColorControl_HueRemainingTime;
+    sendDefaultResponse(cmdID, 0x00, 0x01); 
+    return;
+  }
+
+  if (frmType == 0x01 && cmdID == 0x01)                // Move Hue
+  {
+    if (byte(zb._PktData()[3]) == 0) 
+    {
+        clstr_ColorControl_Hue = clstr_ColorControl_CurrentHue;
+        clstr_ColorControl_HueRemainingTime = 0;
+    }
+    if (byte(zb._PktData()[3]) == 1)
+    {
+      clstr_ColorControl_Hue = 255;
+      clstr_ColorControl_HueGradient = byte(zb._PktData()[4]) / 10;
+      clstr_ColorControl_HueRemainingTime = 0xffff;
+    }
+    if (byte(zb._PktData()[3]) == 3)
+    {
+      clstr_ColorControl_Hue = 0;
+      clstr_ColorControl_HueGradient = -byte(zb._PktData()[4]) / 10;
+      clstr_ColorControl_HueRemainingTime = 0xffff;
+    }
+    sendDefaultResponse(cmdID, 0x00, 0x01);                                   // Send Default response back to originator of command
+    return;
+  }
+  
+  if (frmType == 0x01 && cmdID == 0x02)                // Step Hue
+  {
+    if (byte(zb._PktData()[3]) == 1)
+    {
+      clstr_ColorControl_Hue = clstr_ColorControl_CurrentHue + byte(zb._PktData()[4]);
+    }
+    else
+    {
+      clstr_ColorControl_Hue = clstr_ColorControl_CurrentHue - byte(zb._PktData()[4]);
+    }
+    clstr_ColorControl_HueRemainingTime = /*byte(zb._PktData()[6]) * 256 + */byte(zb._PktData()[5]); 
+    clstr_ColorControl_HueGradient = (clstr_ColorControl_Hue - clstr_ColorControl_CurrentHue) / clstr_ColorControl_HueRemainingTime;
+    sendDefaultResponse(cmdID, 0x00, 0x01); 
+    return;
+  } 
+  
+   if (frmType == 0x01 && cmdID == 0x03)                // Move to Saturation
+  {
+    clstr_ColorControl_Saturation = byte(zb._PktData()[3]);
+    clstr_ColorControl_SaturationRemainingTime = byte(zb._PktData()[5]) * 256 + byte(zb._PktData()[4]); 
+    clstr_ColorControl_SaturationGradient = (clstr_ColorControl_Saturation - clstr_ColorControl_CurrentSaturation) / clstr_ColorControl_SaturationRemainingTime;
+    sendDefaultResponse(cmdID, 0x00, 0x01); 
+    return;
+  } 
+  
+  if (frmType == 0x01 && cmdID == 0x04)                // Move Saturation
+  {
+    if (byte(zb._PktData()[3]) == 0) 
+    {
+        clstr_ColorControl_Saturation = clstr_ColorControl_CurrentSaturation;
+        clstr_ColorControl_SaturationRemainingTime = 0;
+    }
+    if (byte(zb._PktData()[3]) == 1)
+    {
+      clstr_ColorControl_Saturation = 255;
+      clstr_ColorControl_SaturationGradient = byte(zb._PktData()[4]) / 10;
+      clstr_ColorControl_SaturationRemainingTime = 0xffff;
+    }
+    if (byte(zb._PktData()[3]) == 3)
+    {
+      clstr_ColorControl_Saturation = 0;
+      clstr_ColorControl_SaturationGradient = -byte(zb._PktData()[4]) / 10;
+      clstr_ColorControl_SaturationRemainingTime = 0xffff;
+    }
+    sendDefaultResponse(cmdID, 0x00, 0x01); 
+    return;
+  } 
+
+  if (frmType == 0x01 && cmdID == 0x05)                // Step Saturation
+  {
+    if (byte(zb._PktData()[3]) == 1)
+    {
+      clstr_ColorControl_Saturation = clstr_ColorControl_CurrentSaturation + byte(zb._PktData()[4]);
+    }
+    else
+    {
+      clstr_ColorControl_Saturation = clstr_ColorControl_CurrentSaturation - byte(zb._PktData()[4]);
+    }
+    clstr_ColorControl_SaturationRemainingTime = /*byte(zb._PktData()[6]) * 256 + */byte(zb._PktData()[5]); 
+    clstr_ColorControl_SaturationGradient = (clstr_ColorControl_Saturation - clstr_ColorControl_CurrentSaturation) / clstr_ColorControl_SaturationRemainingTime;
+    sendDefaultResponse(cmdID, 0x00, 0x01); 
+    return;
+  } 
+  
+  if (frmType == 0x01 && cmdID == 0x06)                // Move to Hue and Saturation
+  {
+    clstr_ColorControl_Hue = byte(zb._PktData()[3]);
+    clstr_ColorControl_HueRemainingTime = byte(zb._PktData()[6]) * 256 + byte(zb._PktData()[5]); 
+    clstr_ColorControl_HueGradient = (clstr_ColorControl_Hue - clstr_ColorControl_CurrentHue) / clstr_ColorControl_HueRemainingTime;
+    clstr_ColorControl_Saturation = byte(zb._PktData()[4]);
+    clstr_ColorControl_SaturationRemainingTime = byte(zb._PktData()[6]) * 256 + byte(zb._PktData()[5]); 
+    clstr_ColorControl_SaturationGradient = (clstr_ColorControl_Saturation - clstr_ColorControl_CurrentSaturation) / clstr_ColorControl_SaturationRemainingTime;
+
+    sendDefaultResponse(cmdID, 0x00, 0x01); 
+    return;
+  } 
+      
+  
+ 
+  Serialprintln(F("Invalid type/command/attribute!"));
+}
+
+
 float get_Temperature(byte endPoint) __attribute__((weak));
 float get_Temperature(byte endPoint)
 {
@@ -1004,31 +1283,39 @@ void ZCLpkt()
   
   switch (int(zb._PktCluster()))
   {
-    case 0x0000:
+    case cluster_Basic:
       clstr_Basic(frmType, seqNum, cmdID, attributeID);                                                          // Basic Cluster Page 78 of ZigBee Cluster Library
       break;
  
-    case 0x0001:
+    case cluster_PowerConfiguration:
       clstr_PowerConfiguration(frmType, seqNum, cmdID, attributeID);                                                          // Basic Cluster Page 78 of ZigBee Cluster Library
       break;
       
-    case 0x0002:
+    case cluster_DeviceTemperature:
       clstr_DeviceTemperature(endPoint, frmType, seqNum, cmdID, attributeID);                                                          // On/Off Cluster Page 125 of ZigBee Cluster Library
       break;
         
-    case 0x0006:
+    case cluster_OnOff:
       clstr_OnOff(endPoint, frmType, seqNum, cmdID, attributeID);                                                          // On/Off Cluster Page 125 of ZigBee Cluster Library
       break;
+        
+    case cluster_LevelControl:
+      clstr_LevelControl(endPoint, frmType, seqNum, cmdID, attributeID);                                                          // On/Off Cluster Page 125 of ZigBee Cluster Library
+      break;
+        
+    case cluster_ColorControl:
+      clstr_ColorControl(endPoint, frmType, seqNum, cmdID, attributeID);                                                          // On/Off Cluster Page 125 of ZigBee Cluster Library
+      break;
 
-    case 0x0402:
+    case cluster_Temperature:
       clstr_Temperature(endPoint, frmType, seqNum, cmdID, attributeID);                                                          // On/Off Cluster Page 125 of ZigBee Cluster Library
       break;
 
-    case 0x0403:
+    case cluster_Pressure:
       clstr_Pressure(endPoint, frmType, seqNum, cmdID, attributeID);                                                          // On/Off Cluster Page 125 of ZigBee Cluster Library
       break;
 
-    case 0x0405:
+    case cluster_RelativeHumidity:
       clstr_Humidity(endPoint, frmType, seqNum, cmdID, attributeID);                                                          // On/Off Cluster Page 125 of ZigBee Cluster Library
       break;
     
@@ -1062,6 +1349,30 @@ void Send10Response(bool Value, int attribute, byte seqNum)
     zb.TX(zb._PktIEEEAddHi(), zb._PktIEEEAddLo(), zb._PktNetAdd(), zb._PktDEP(), zb._PktSEP(), zb._PktProfile(), zb._PktCluster(), Buffer, 8);
     Serialprint(F("Boolean response sent:"));
     if (Value == true) { Serialprintln(F("True")); } else { Serialprintln(F("False")); }
+}
+
+void Send19Response(unsigned int Value, int attribute, byte seqNum)   
+{
+    if (BatteryPowered) WakeXBee(false);
+  
+    memset(Buffer, 0 , BufferSize);                                           // Read attributes
+    Buffer[0] = 0x18;                                                         // Frame Control 0x18 = direction is from server to client, disable default response P14 of ZCL
+    Buffer[1] = seqNum;                                                       // Set the sequence number to match the seq number in requesting packet
+    Buffer[2] = 0x01;                                                         // Command Identifer 0x01 = Read attribute response see Table 2.9 on page 16 of ZCL
+
+    Buffer[3] = lowByte(attribute);                                           // Attribute Identifier (2 bytes) field being reported see figure 2.24 on page 36 of ZCL
+    Buffer[4] = highByte(attribute);
+
+    Buffer[5] = 0x00;                                                         // Status 00 = Success
+
+    Buffer[6] = 0x19;                                                         // Attribute Data Type 0x10 = Boolean, see Table 2.16 on page 54 of ZCL
+
+    Buffer[7] = lowByte(Value);                                             // Attribute Data Field in this case 0x00 = Off, see Table 3.40 on page 126 of ZCL. Set the on / off status based on pin
+    Buffer[8] = highByte(Value);                                             // Attribute Data Field in this case 0x00 = Off, see Table 3.40 on page 126 of ZCL. Set the on / off status based on pin
+
+    zb.TX(zb._PktIEEEAddHi(), zb._PktIEEEAddLo(), zb._PktNetAdd(), zb._PktDEP(), zb._PktSEP(), zb._PktProfile(), zb._PktCluster(), Buffer, 9);
+    Serialprint(F("bitmap response sent:"));
+    Serialprintln(Value);
 }
 
 void Send20Response(byte Value, int attribute, byte seqNum)   
@@ -1345,6 +1656,53 @@ void Send29Report(byte endPoint, int Value, int cluster, int attribute)
 }
 
 
+// --------------------------------------------------------------------------------------------------
+// -- Interrupt Service Routines                                                                   --
+// --------------------------------------------------------------------------------------------------
+void timerCallback()
+{ 
+  if (clstr_LevelControl_RemainingTime > 0)
+  {
+      if ((unsigned int)clstr_LevelControl_CurrentLevel != clstr_LevelControl_Level)
+      {
+          clstr_LevelControl_CurrentLevel += clstr_LevelControl_Gradient;
+          if (clstr_LevelControl_CurrentLevel > 255) clstr_LevelControl_CurrentLevel = 255;
+          if (clstr_LevelControl_CurrentLevel < 0) clstr_LevelControl_CurrentLevel = 0;
+          clstr_LevelControlSetLevel(1, (byte)clstr_LevelControl_CurrentLevel);
+          clstr_LevelControl_RemainingTime--;
+      }
+      else 
+          clstr_LevelControl_RemainingTime = 0;
+  }
+  
+  if (clstr_ColorControl_HueRemainingTime > 0)
+  {
+      if ((unsigned int)clstr_ColorControl_CurrentHue != clstr_ColorControl_Hue)
+      {
+          clstr_ColorControl_CurrentHue += clstr_ColorControl_HueGradient;
+          if (clstr_ColorControl_CurrentHue > 255) clstr_ColorControl_CurrentHue = 255;
+          if (clstr_ColorControl_CurrentHue < 0) clstr_ColorControl_CurrentHue = 0;
+          clstr_ColorControlSetHueSaturation(1, (byte)clstr_ColorControl_CurrentHue, (byte)clstr_ColorControl_CurrentSaturation);
+          clstr_ColorControl_HueRemainingTime--;
+      }
+      else 
+          clstr_ColorControl_HueRemainingTime = 0;
+  }
+ 
+  if (clstr_ColorControl_SaturationRemainingTime > 0)
+  { 
+      if ((unsigned int)clstr_ColorControl_CurrentSaturation != clstr_ColorControl_Saturation)
+      {
+          clstr_ColorControl_CurrentSaturation += clstr_ColorControl_SaturationGradient;
+          if (clstr_ColorControl_CurrentSaturation > 255) clstr_ColorControl_CurrentSaturation = 255;
+          if (clstr_ColorControl_CurrentSaturation < 0) clstr_ColorControl_CurrentSaturation = 0;
+          clstr_ColorControlSetHueSaturation(1, (byte)clstr_ColorControl_CurrentHue, (byte)clstr_ColorControl_CurrentSaturation);
+          clstr_ColorControl_SaturationRemainingTime--;
+      }
+      else 
+          clstr_ColorControl_SaturationRemainingTime = 0;
+  }  
+}
 
 void setup_ZigBee(Stream& port, byte _endpointClusterCount, bool _BatteryPowered)
 {
@@ -1368,6 +1726,9 @@ void setup_ZigBee(Stream& port, byte _endpointClusterCount, bool _BatteryPowered
   // Dispaly number of clusters
   Serialprint(F("Total number of clusters:")); 
   Serialprintln(endpointClusterCount);
+  
+  Timer1.initialize(100000);         
+  Timer1.attachInterrupt(timerCallback);  
   
   CheckInboundPackets(false);
   

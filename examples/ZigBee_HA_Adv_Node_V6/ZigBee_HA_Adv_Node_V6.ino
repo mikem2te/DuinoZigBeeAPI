@@ -39,7 +39,7 @@
 // --------------------------------------------------------------------------------------------------
 // -- Is the device battery powered. Remark define for fully powered / non sleepy nodes            --
 // --------------------------------------------------------------------------------------------------
-#define BatteryPowered
+//#define BatteryPowered
 
 
 // --------------------------------------------------------------------------------------------------
@@ -65,8 +65,11 @@ byte HardwareVersion = 1;          // Hardware version
 EndpointCluster endpointClusters[]= { 
   {1, cluster_Basic},
   {1, cluster_PowerConfiguration},
-  {1, 0x0003},
+  {1, cluster_Identity},
   {1, cluster_OnOff},
+  {1, cluster_LevelControl},
+  {1, cluster_ColorControl},
+  
   {1, cluster_Temperature},
   {2, cluster_RelativeHumidity}
 }; 
@@ -411,6 +414,20 @@ void set_OnOff(byte endPoint, bool On)
       }
     #endif  
   }
+}
+
+void clstr_LevelControlSetLevel(byte endPoint, byte level)
+{
+  Serial.print(F("Level:"));
+  Serial.println(level);
+}
+
+void clstr_ColorControlSetHueSaturation(byte endPoint, byte hue, byte saturation)
+{
+  Serial.print(F("Hue:"));
+  Serial.print(hue);
+  Serial.print(F("  Saturation:"));
+  Serial.println(saturation);  
 }
 
 void toggle_OnOff(byte endPoint)
