@@ -1552,7 +1552,7 @@ void SendPressureReport(byte endPoint, float Value)
 {
   if (Value == NAN) return;
   
-  int Pressure = (int) (Value * 100.0);
+  int Pressure = (int) (Value); // * 10.0);
      
   if ((abs(Pressure - old_Pressure) >= 5) || (PressureSensor_Report >= Sensor_ReportFreq))
   {
