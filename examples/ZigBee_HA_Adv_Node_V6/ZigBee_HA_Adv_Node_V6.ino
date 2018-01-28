@@ -46,14 +46,15 @@
 // -- Configure name and versions of the node. Basic cluster details                               --
 // --------------------------------------------------------------------------------------------------
 #ifdef BatteryPowered
-  const char Model[] PROGMEM  = {"Arduino XBee (Battery)"};     // ZigBee Basic Device ModelIdentifier 0 to 32 byte char string P79 of ZCL
+//  const char Model[] PROGMEM  = {"Arduino XBee (Battery)"};     // ZigBee Basic Device ModelIdentifier 0 to 32 byte char string P79 of ZCL
 #else
-  const char Model[] PROGMEM  = {"Arduino XBee (Powered)"};     // ZigBee Basic Device ModelIdentifier 0 to 32 byte char string P79 of ZCL
+//  const char Model[] PROGMEM  = {"Arduino XBee (Powered)"};     // ZigBee Basic Device ModelIdentifier 0 to 32 byte char string P79 of ZCL
 #endif
-const char Manufacturer[] PROGMEM = {"Arduino"};   // ZigBee Basic Device ManufacturerName 0 to 32 bytes
+const char Model[] PROGMEM  = {"Arduino"}; 
+const char Manufacturer[] PROGMEM = {"Arduino"};                // ZigBee Basic Device ManufacturerName 0 to 32 bytes
 const char SWVersion[] PROGMEM = {"1.0.0"};
-byte AppVersion = 1;               // Application version
-byte HardwareVersion = 1;          // Hardware version 
+byte AppVersion = 1;                                            // Application version
+byte HardwareVersion = 1;                                       // Hardware version 
 
 
 
@@ -69,9 +70,9 @@ EndpointCluster endpointClusters[]= {
   {1, cluster_OnOff},
   {1, cluster_LevelControl},
   {1, cluster_ColorControl},
-  
   {1, cluster_Temperature},
-  {2, cluster_RelativeHumidity}
+  {1, cluster_Pressure},
+  {1, cluster_RelativeHumidity}
 }; 
 
 
@@ -84,15 +85,15 @@ byte XBeeRTS=8;        // This is the Arduino pin connected to the XBee's RTS pi
 byte XBeeReset=12;     // This is the Arduino pin connected to the XBee's reset pin, not needed if using soft reset (AT FR)
 byte XBeeOnSleep = 3;  // This is the Arduino pin connected to the XBee's on/sleep pin. Not needed if using a powered node
 byte XBeeSleepRQ = 9;  // This is the Arduino pin connected to the XBee's sleep rq pin. Not needed if using a powered node
-int XBeeBaud=9600;    // The baud rate of the XBee must match this number (set with the XBee's BD command)
+int  XBeeBaud=9600;    // The baud rate of the XBee must match this number (set with the XBee's BD command)
 
 
 // --------------------------------------------------------------------------------------------------
 // Configuration for sensor poll frequency                                                         --
 // --------------------------------------------------------------------------------------------------
-byte SensorCheck_FreqWake = 2;               // Poll sensors every x wake cycles for sleepy devices
-unsigned long SensorCheck_FreqMillis = 60000;         // Poll sensors every x millseconds for non sleepy devices
-unsigned long SensorCheck_RetryMillis = 10000;        // Retry a failed poll after x milli seconds
+byte SensorCheck_FreqWake = 2;                        // Poll sensors every x wake cycles for sleepy devices
+unsigned long SensorCheck_FreqMillis = 10000;         // Poll sensors every x millseconds for non sleepy devices
+unsigned long SensorCheck_RetryMillis = 50000;        // Retry a failed poll after x milli seconds for non sleepy devices
 unsigned long SensorStabilisationAfterWake = 1500;    // Wait x millseconds afer wake before polling sensors
 
 
@@ -108,8 +109,8 @@ const byte LEDPin=LED_BUILTIN;     // Pin that is connected to an LED's anode (p
 
 // Bosch BME280 / BMP280
 // ---------------------
-//#define BMP280
-//#define TempSensorPowerPin 7
+#define BME280
+#define TempSensorPowerPin 7
 
 
 // Silicon Labs Si7021
@@ -121,9 +122,9 @@ const byte LEDPin=LED_BUILTIN;     // Pin that is connected to an LED's anode (p
 // DHT temperatue and humidity sensors. Types are DHT11 or DHT22
 // -------------------------------------------------------------
 //#define DHTTYPE DHT11
-#define DHTTYPE DHT22
-#define DHTPIN 6 
-#define TempSensorPowerPin 7
+//#define DHTTYPE DHT22
+//#define DHTPIN 6 
+//#define TempSensorPowerPin 7
 
   
 // Dallas one wire sensors 18B2x
@@ -201,9 +202,15 @@ const byte LEDPin=LED_BUILTIN;     // Pin that is connected to an LED's anode (p
 // ---------
 #ifdef BMP280
   #include <Adafruit_BMP280.h>
-  Adafruit_BMP280 bmp; // I2C
+  Adafruit_BMP280 bmp;
 #endif
 
+// BME setup
+// ---------
+#ifdef BME280
+  #include <Adafruit_BME280.h>
+  Adafruit_BME280 bme;
+#endif
 
 // DHT sensor setup
 // ----------------
@@ -231,6 +238,38 @@ const byte LEDPin=LED_BUILTIN;     // Pin that is connected to an LED's anode (p
   DeviceAddress deviceAddress;
 #endif
 
+
+#ifdef AddressableLED
+  #include <bitswap.h>
+  #include <chipsets.h>
+  #include <color.h>
+  #include <colorpalettes.h>
+  #include <colorutils.h>
+  #include <controller.h>
+  #include <cpp_compat.h>
+  #include <dmx.h>
+  #include <FastLED.h>
+  #include <fastled_config.h>
+  #include <fastled_delay.h>
+  #include <fastled_progmem.h>
+  #include <fastpin.h>
+  #include <fastspi.h>
+  #include <fastspi_bitbang.h>
+  #include <fastspi_dma.h>
+  #include <fastspi_nop.h>
+  #include <fastspi_ref.h>
+  #include <fastspi_types.h>
+  #include <hsv2rgb.h>
+  #include <led_sysdefs.h>
+  #include <lib8tion.h>
+  #include <noise.h>
+  #include <pixelset.h>
+  #include <pixeltypes.h>
+  #include <platforms.h>
+  #include <power_mgt.h>
+  CRGB leds[5 * 5];
+  #define NUM_LEDS 25
+#endif
 
 // XBee devices setup
 // ------------------
@@ -275,7 +314,15 @@ void setup()
     Serial.println(__TIME__);
   #endif
 
-         
+  #ifdef AddressableLED
+    LEDS.addLeds<WS2811,5,RGB>(leds,NUM_LEDS);
+    LEDS.setBrightness(96);   
+    for(int i = 0; i < 25; i++) {
+      leds[1] = CHSV(2,255,100);
+    }
+    LEDS.show();
+  #endif  
+  
   // On Off cluster setup
   #ifdef OnOffButton
     pinMode(LEDPin, OUTPUT);              // Set LEDPin as Output
@@ -298,13 +345,26 @@ void setup()
     do {
       status = bmp.begin();  
       if (!status) {
+        Serial.println(F("Could not find a valid BMP280 sensor, check wiring!"));
+      } else {
+        Serial.println(F("A valid BMP280 sensor has been found!"));
+      }
+    } while (!status);
+  #endif
+
+  
+  #ifdef BME280
+    bool status; 
+    do {
+      status = bme.begin();  
+      if (!status) {
         Serial.println(F("Could not find a valid BME280 sensor, check wiring!"));
       } else {
         Serial.println(F("A valid BME280 sensor has been found!"));
       }
     } while (!status);
   #endif
-
+  
   #ifdef DHTTYPE
     dht.begin();
   #endif
@@ -452,6 +512,11 @@ float get_Temperature(byte endPoint)
     #ifdef BMP280
       Serial.print(F("BMP280"));
       t = bmp.readTemperature() * 10;
+    #endif
+      
+    #ifdef BME280
+      Serial.print(F("BME280"));
+      t = bme.readTemperature();
     #endif  
     
     #ifdef DHTTYPE
@@ -491,12 +556,17 @@ float get_Pressure(byte endPoint)
 {
   Serial.flush();
   float p = NAN;
-  
+
   #ifdef BMP280
-    Serial.println(F("BMP280"));
+    Serial.print(F("BMP280"));
     p = bmp.readPressure() / 10.0;
   #endif  
 
+  #ifdef BME280
+    Serial.print(F("BME280"));
+    p = bme.readPressure() / 100.0;
+  #endif  
+  
   Serial.print(F("Sensor, Pressure:"));
   Serial.println(p);
   return p;
@@ -505,7 +575,12 @@ float get_Pressure(byte endPoint)
 float get_Humidity(byte endPoint)
 {
   float h = NAN;
-  
+
+  #ifdef BME280
+    Serial.print(F("BME280"));
+    h = bme.readHumidity();
+  #endif  
+    
   #ifdef DHTTYPE
     Serial.print(F("DHT"));
     Serial.flush();
