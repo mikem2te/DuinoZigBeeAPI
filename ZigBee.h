@@ -50,16 +50,17 @@ extern byte clstr_LevelControl_Level;
 extern unsigned int clstr_LevelControl_RemainingTime;
 extern float clstr_LevelControl_Gradient;
 
+extern byte         clstr_ColorControl_ColourMode;
+extern float        clstr_ColorControl_A_Current;
+extern unsigned int clstr_ColorControl_A;
+extern unsigned int clstr_ColorControl_A_RemainingTime;
+extern float        clstr_ColorControl_A_Gradient;
 
-extern float clstr_ColorControl_CurrentHue;
-extern byte clstr_ColorControl_Hue;
-extern unsigned int clstr_ColorControl_HueRemainingTime;
-extern float clstr_ColorControl_HueGradient;
+extern float        clstr_ColorControl_B_Current;
+extern unsigned int clstr_ColorControl_B;
+extern unsigned int clstr_ColorControl_B_RemainingTime;
+extern float        clstr_ColorControl_B_Gradient;
 
-extern float clstr_ColorControl_CurrentSaturation;
-extern byte clstr_ColorControl_Saturation;
-extern unsigned int clstr_ColorControl_SaturationRemainingTime;
-extern float clstr_ColorControl_SaturationGradient;
 
 
 struct EndpointCluster {
