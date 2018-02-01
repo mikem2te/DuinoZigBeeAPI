@@ -44,7 +44,7 @@
 #define cluster_Diagnostics 0x0b05
 
 
-
+extern byte Light_Update_Interval;
 extern float clstr_LevelControl_CurrentLevel;
 extern byte clstr_LevelControl_Level;
 extern unsigned int clstr_LevelControl_RemainingTime;

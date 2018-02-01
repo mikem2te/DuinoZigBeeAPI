@@ -141,6 +141,7 @@ const byte LEDPin=LED_BUILTIN;     // Pin that is connected to an LED's anode (p
 
 #define AddressableLED
 #define ADDR_LED_DATA_PIN 8
+byte Light_Update_Interval = 30;
 
 // --------------------------------------------------------------------------------------------------
 // -- This completes the configuration of the device. Further changes below should not be required --
@@ -474,41 +475,31 @@ void clstr_ColorControlSetColour(byte endPoint, byte ColourMode, float hue, floa
     }
     else
     {
-      float x = (float)hue / 65536.0;
-      float y = (float)saturation / 65536.0;
+      float x = hue / 65536.0;
+      float y = saturation / 65536.0;
       float z = 1.0f - x - y;
 
       float Y = 1; //(float) level / 256.0; // The given brightness value
       float X = (Y / y) * x;
       float Z = (Y / y) * z;
 
-      //printf("xyY %f %f %f\n", x, y, Y);
-
-      //printf("XYZ %f %f %f\n", X, Y, Z);
-
       float rgb[3];
 
-      rgb[0] = X * 3.2404542 +  Y * -1.5371385 + Z * -0.4985314;
-      rgb[1] = X * -0.9692660 + Y * 1.8760108  + Z * 0.0415560;
-      rgb[2] = X * 0.0556434 +  Y * -0.2040259 + Z * 1.0572252;
+      rgb[0] = X *  3.2404542 +  Y * -1.5371385 + Z * -0.4985314;
+      rgb[1] = X * -0.9692660 +  Y *  1.8760108 + Z *  0.0415560;
+      rgb[2] = X *  0.0556434 +  Y * -0.2040259 + Z *  1.0572252;
       //printf("RGB1 %f %f %f\n", rgb[0], rgb[1], rgb[2]);
 
       float maxval = max(rgb[0], max(rgb[1], rgb[2]));
-      float scale = 256;
-     
-      if (maxval > 1)
-      {
-        for (int i = 0; i < 3; i++)
-        rgb[i] = rgb[i] / maxval;
-      }
-
-      //printf("RGB2 %f %f %f\n", rgb[0], rgb[1], rgb[2]);
 
       for (int i = 0; i < 3; i++)
+      {
+        if (maxval > 1) rgb[i] = rgb[i] / maxval;
         rgb[i] = max((rgb[i] <= 0.0031308f ? 12.92f * rgb[i] : (1.0f + 0.055f) * pow(rgb[i], (1.0f / 2.4f)) - 0.055f) * 256, 0);
+      }
         
       leds[0] = CRGB((byte)rgb[1], (byte)rgb[0], (byte)rgb[2]); 
-      leds[0] %=  level; // / 256;
+      leds[0] %=  level;
     }
     FastLED.show();
   #endif

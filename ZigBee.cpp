@@ -52,6 +52,8 @@ int old_Temperature;
 unsigned int old_Humidity;
 int old_Pressure;
 
+
+bool Update_Lighting;
 byte clstr_LevelControl_Command;
 float clstr_LevelControl_CurrentLevel;
 byte clstr_LevelControl_Level;
@@ -1234,10 +1236,10 @@ void clstr_ColorControl(byte endPoint, byte frmType, byte seqNum, byte cmdID, wo
       Serialprintln(F("(Move to Colour XY)"));
       clstr_ColorControl_ColourMode = 1;
       clstr_ColorControl_A = (unsigned int)(zb._PktData()[4]) * 256 + byte(zb._PktData()[3]); 
-      clstr_ColorControl_A_RemainingTime = byte(zb._PktData()[8]) * 256 + byte(zb._PktData()[7]); 
+      clstr_ColorControl_A_RemainingTime = (byte(zb._PktData()[8]) * 256 + byte(zb._PktData()[7])) * 100 / Light_Update_Interval; 
       clstr_ColorControl_A_Gradient = (clstr_ColorControl_A - clstr_ColorControl_A_Current) / clstr_ColorControl_A_RemainingTime;
       clstr_ColorControl_B = (unsigned int)(zb._PktData()[6]) * 256 + byte(zb._PktData()[5]);
-      clstr_ColorControl_B_RemainingTime = byte(zb._PktData()[8]) * 256 + byte(zb._PktData()[7]); 
+      clstr_ColorControl_B_RemainingTime = clstr_ColorControl_A_RemainingTime; 
       clstr_ColorControl_B_Gradient = (clstr_ColorControl_B - clstr_ColorControl_B_Current) / clstr_ColorControl_B_RemainingTime;
 
       sendDefaultResponse(cmdID, 0x00, 0x01); 
@@ -1589,7 +1591,7 @@ void sendDefaultResponse(byte CmdID, byte Status, byte EndPoint)
 
   Buffer[4] = Status;                                                         // Status see Table 2.17 on page 67 of ZigBee Cluster Library
 
-  Serialprint(F("Sending Default Response"));
+  Serialprintln(F("Sending Default Response"));
   zb.TX(zb._PktIEEEAddHi(), zb._PktIEEEAddLo(), zb._PktNetAdd(), EndPoint, zb._PktSEP(), zb._PktProfile(), zb._PktCluster(), Buffer, 5);
 }
 
@@ -1829,7 +1831,8 @@ void timerCallback()
 
   
   if (UpdateLight)
-      clstr_ColorControlSetColour(1, clstr_ColorControl_ColourMode, clstr_ColorControl_A_Current, clstr_ColorControl_B_Current, clstr_LevelControl_CurrentLevel);
+      Update_Lighting = true;
+    //  clstr_ColorControlSetColour(1, clstr_ColorControl_ColourMode, clstr_ColorControl_A_Current, clstr_ColorControl_B_Current, clstr_LevelControl_CurrentLevel);
 }
 
 void setup_ZigBee(Stream& port, byte _endpointClusterCount, bool _BatteryPowered)
@@ -1855,10 +1858,11 @@ void setup_ZigBee(Stream& port, byte _endpointClusterCount, bool _BatteryPowered
   Serialprint(F("Total number of clusters:")); 
   Serialprintln(endpointClusterCount);
   
-  Timer1.initialize(100000);         
+  Timer1.initialize( ((unsigned long)Light_Update_Interval) * 1000);         
   Timer1.attachInterrupt(timerCallback);  
   
-  
+  Update_Lighting = false;
+      
   CheckInboundPackets(false);
   
   //PollSensors();
@@ -1885,6 +1889,12 @@ void loop_ZigBee()
   // Check for any unprocessed inboud messages. Process these first
   rxResult = CheckInboundPackets(false);
 
+  if (Update_Lighting)
+  {
+    clstr_ColorControlSetColour(1, clstr_ColorControl_ColourMode, clstr_ColorControl_A_Current, clstr_ColorControl_B_Current, clstr_LevelControl_CurrentLevel);
+    Update_Lighting = false;
+  }
+  
   if (Sensor_Check)
     if ((!BatteryPowered) || (millis() > Arduino_LastWakeMillis + SensorStabilisationAfterWake))
     {
