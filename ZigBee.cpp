@@ -147,6 +147,11 @@ void FuncNotImplemented()
   Serial.println(F("** FUNCTION NOT IMPLEMENTED **"));
 }
 
+void InvalidTypeOrCommand()
+{
+  Serialprintln(F("Invalid type/command/attribute!"));
+}
+  
 // ----------------------------------
 // XBee, Network and Reset management
 // ----------------------------------
@@ -233,7 +238,6 @@ void sleepNow()         // here we put the arduino to sleep
 
 void ResetNetwork()
 {
-  Serialprintln();
   Serialprint(F("Sending NR Command:"));
   Serialprint(zb.AT("NR"));
   delay(1000);
@@ -249,7 +253,6 @@ void LeaveNetwork()
   // Force ZigBee to leave network and start
   // looking for a network to join
   //***************************************
-  Serialprintln();
   Serialprint(F("Sending Leave PAN Command:"));
   Serialprint(zb.ATbyte("CB", 0x02));
  // resetXB();
@@ -330,7 +333,6 @@ void JoinNetwork()
   int RetryCount = JoinRetryCount;
   byte AIStatus = 0xFF;
   
-  Serialprintln();
   Serialprint(F("Network Join Status: "));
   
   //if (BatteryPowered) WakeXBee(true);
@@ -341,9 +343,8 @@ void JoinNetwork()
   }
   else
   {
-    Serialprintln();
     //Association Indicator (AI) definition strings
-    Serialprintln(F("0x00 - Successfully formed or joined a network. (Coordinators form a network, routers and end devices join a network.)"));
+    Serialprintln(F("0x00 - Successfully formed or joined a network"));
     Serialprintln(F("0x21 - Scan found no PANs"));
     Serialprintln(F("0x22 - Scan found no valid PANs based on current SC and ID settings"));
     Serialprintln(F("0x23 - Valid Coordinator or Routers found, but they are not allowing joining (NJ expired)"));
@@ -358,7 +359,6 @@ void JoinNetwork()
     Serialprintln(F("0xAD - Secure join error - network security key not received"));
     Serialprintln(F("0xAF - Secure join error - joining device does not have the right preconfigured link key"));
     Serialprintln(F("0xFF - Scanning for a ZigBee network (routers and end devices)"));
-    Serialprintln();
     Serialprint(F("Looping until network is joined: "));
     now=millis();
     while (AIStatus != 0)                                       // Loop until XBee joins a valid network
@@ -423,7 +423,7 @@ void SetupAddresses()
   //***************************************
   // Populate string variables with address information
   //**************************************
-  Serialprintln();
+//  Serialprintln();
   Serialprint(F("IEEE Add: "));
   Serialprint(LclIeeeHi,HEX);
   Serialprint(F("-"));
@@ -507,32 +507,32 @@ void ProcessInboundPacket(int rxResult)
     //  }
     //}
     Serialprintln(F("Good packet received:"));
-    Serialprint(F("\tIEEE Add: "));
+    Serialprint(F("\tIEEE Add:"));
     Serialprint(long(zb._PktIEEEAddHi()),HEX);
-    Serialprint(long(zb._PktIEEEAddLo()),HEX);
-    Serialprintln();
+    Serialprintln(long(zb._PktIEEEAddLo()),HEX);
+ //   Serialprintln();
   
-    Serialprint(F("\tNet Add: "));
-    Serialprint(long(zb._PktNetAdd()),HEX);
-    Serialprintln();
+    Serialprint(F("\tNet Add:"));
+    Serialprintln(long(zb._PktNetAdd()),HEX);
+  //  Serialprintln();
   
-    Serialprint(F("\tDst EP: "));
-    Serialprint(byte(zb._PktDEP()),HEX);
-    Serialprintln();
+    Serialprint(F("\tDst EP:"));
+    Serialprintln(byte(zb._PktDEP()),HEX);
+   // Serialprintln();
   
-    Serialprint(F("\tSrc EP: "));
-    Serialprint(byte(zb._PktSEP()),HEX);
-    Serialprintln();
+    Serialprint(F("\tSrc EP:"));
+    Serialprintln(byte(zb._PktSEP()),HEX);
+  //  Serialprintln();
   
-    Serialprint(F("\tProfile ID: "));
-    Serialprint(word(zb._PktProfile()),HEX);
-    Serialprintln();
+    Serialprint(F("\tProfile ID:"));
+    Serialprintln(word(zb._PktProfile()),HEX);
+  //  Serialprintln();
   
-    Serialprint(F("\tCluster ID: "));
-    Serialprint(word(zb._PktCluster()),HEX);
-    Serialprintln();
+    Serialprint(F("\tCluster ID:"));
+    Serialprintln(word(zb._PktCluster()),HEX);
+ //   Serialprintln();
   
-    Serialprint(F("\tPayload Hex: "));
+    Serialprint(F("\tPayload Hex:"));
     Serialprint(F("->"));
     for (int x=0;  x < zb._PktDataSize(); x++)
     {
@@ -598,6 +598,9 @@ void ZDOpkt()
   // ZDO are defined in the ZigBee Specification Document 053474r20
   // http://www.zigbee.org/wp-content/uploads/2014/11/docs-05-3474-20-0csg-zigbee-specification.pdf
   //***************************************
+  Serialprint(F("ZDOpkt Packet Received. Cluster:0x"));
+  PrintHex(int(zb._PktCluster()), 4); 
+  
   switch (int(zb._PktCluster()))
   {
     case 0x0004:
@@ -606,15 +609,14 @@ void ZDOpkt()
     case 0x0005:
       Active_EP_req();                                                        // Page 105 of ZBSpec
       break;
-    default: Serialprint(F("** ZDOpkt received but there is no valid handler - "));
-      Serialprintln(int(zb._PktCluster()), HEX);
+    default: Serialprintln(F(" there is no valid handler"));
       break;
   }
 }
 
 int get_EndPointList(byte *list)
 {
-  int endPointCount = 0;
+  byte endPointCount = 0;
   //int charPtr=0;
   bool allreadyExists = false;
   
@@ -640,8 +642,8 @@ int get_EndPointList(byte *list)
 
 int get_ClustersForEndPoint(byte endPoint, unsigned int *list)
 {
-  int clusterCount = 0;
-  int charPtr=0;
+  byte clusterCount = 0;
+  //int charPtr=0;
   
   for (int i = 0; i < endpointClusterCount; i++)
   {
@@ -670,13 +672,13 @@ void Simple_Desc_req()                                                        //
   int clusterCount;
   unsigned int ClusterList[ClusterListSize];
     
-  Serialprintln(F("ZDOpkt Packet Received - Simple Descriptor cluster 0x0004. Responding with 0x8004"));
+  Serialprintln(F(" Simple Descriptor cluster 0x0004. Responding with 0x8004"));
   
   byte epToRpt = byte(zb._PktData()[3]);                                      // End Point to report Simple Desc on
 
   clusterCount = get_ClustersForEndPoint(epToRpt, ClusterList);
     
-  Serialprintln();
+//  Serialprintln();
   Serialprint(F("Reporting Simple Desc for End Point "));
   Serialprintln (epToRpt,HEX);
 
@@ -746,7 +748,7 @@ void Active_EP_req()                                                          //
     
   int endPointCount = get_EndPointList(EndPointList);
   
-  Serialprintln(F("ZDOpkt Packet Received - Reporting Active End Points cluster 0x0005. Responding with 0x8005"));
+  Serialprintln(F(" Reporting Active End Points cluster 0x0005. Responding with 0x8005"));
   memset(Buffer, 0 , BufferSize);
   Buffer[0] = zb._PktData()[0];                                               // Set Transaction Seq number to match inbound packets seq number
   Buffer[1] = 0x00;                                                           // Status 0x00 = success Table 2.94 on page 161 of ZBSpec
@@ -780,7 +782,6 @@ void clstr_Basic(byte frmType, byte seqNum, byte cmdID, word attributeID)       
   // ZCL Cluster 0x0000 Basic Cluster
   // Section 3.2 on page 78 of ZCL
   //***************************************
-  Serialprintln();
   Serialprint(F("Basic Cluster attribute ID "));
   Serialprint(attributeID,HEX);
   Serialprint(F(" "));
@@ -839,7 +840,7 @@ void clstr_Basic(byte frmType, byte seqNum, byte cmdID, word attributeID)       
     Send42Response(buf, 0x4000, seqNum);
     return;    
   }
-  Serialprintln(F("Invalid type/command/attribute!"));
+  InvalidTypeOrCommand();
 }
 
 
@@ -849,7 +850,6 @@ void clstr_PowerConfiguration(byte frmType, byte seqNum, byte cmdID, word attrib
   // ZCL Cluster 0x0006 On/Off Cluster
   // Section 3.8 on page 125 of ZCL
   //***************************************
-  Serialprintln();
   Serialprint(F("Power Config Cluster attribute ID "));
   Serialprint(attributeID,HEX);
   Serialprint(F(" "));
@@ -860,7 +860,7 @@ void clstr_PowerConfiguration(byte frmType, byte seqNum, byte cmdID, word attrib
      Send20Response(50, 0x0020, seqNum);
      return;
   }
-  Serialprintln(F("Invalid type/command/attribute!"));
+  InvalidTypeOrCommand();
 }
 
 
@@ -896,7 +896,6 @@ void clstr_OnOff(byte endPoint, byte frmType, byte seqNum, byte cmdID, word attr
   // ZCL Cluster 0x0006 On/Off Cluster
   // Section 3.8 on page 125 of ZCL
   //***************************************
-  Serialprintln();
   Serialprint(F("OnOff Cluster attribute ID "));
   Serialprint(attributeID,HEX);
   Serialprint(F(" "));
@@ -928,17 +927,8 @@ void clstr_OnOff(byte endPoint, byte frmType, byte seqNum, byte cmdID, word attr
     sendDefaultResponse(cmdID, 0x00, 0x01);                                   // Send Default response back to originator of command
     return;
   }
-  Serialprintln(F("Invalid type/command/attribute!"));
+  InvalidTypeOrCommand();
 }
-
-
-
-void clstr_LevelControlSetLevel(byte endPoint, byte level) __attribute__((weak));
-void clstr_LevelControlSetLevel(byte endPoint, byte level)
-{
-  FuncNotImplemented(); 
-}
-
 
 
 void clstr_LevelControl(byte endPoint, byte frmType, byte seqNum, byte cmdID, word attributeID)                                                            // Cluster 0x0006 On/Off
@@ -947,8 +937,7 @@ void clstr_LevelControl(byte endPoint, byte frmType, byte seqNum, byte cmdID, wo
   // ZCL Cluster 0x0006 On/Off Cluster
   // Section 3.8 on page 125 of ZCL
   //***************************************
-  Serialprintln();
-  
+ 
   if (frmType == 0x00 && cmdID == 0x00)
   {
     Serialprint(F("LevelControl Cluster attribute ID "));
@@ -1030,12 +1019,12 @@ void clstr_LevelControl(byte endPoint, byte frmType, byte seqNum, byte cmdID, wo
     }
   }
   
-  Serialprintln(F("Invalid type/command/attribute!"));
+  InvalidTypeOrCommand();
 }
 
 
-void clstr_ColorControlSetHueSaturation(byte endPoint, byte hue, byte saturation) __attribute__((weak));
-void clstr_ColorControlSetHueSaturation(byte endPoint, byte hue, byte saturation)
+void clstr_ColorControlSetColour(byte endPoint, byte ColourMode, float hue, float saturation, float level) __attribute__((weak));
+void clstr_ColorControlSetColour(byte endPoint, byte ColourMode, float hue, float saturation, float level)
 {
   FuncNotImplemented(); 
 }
@@ -1047,7 +1036,6 @@ void clstr_ColorControl(byte endPoint, byte frmType, byte seqNum, byte cmdID, wo
   // ZCL Cluster 0x0006 On/Off Cluster
   // Section 3.8 on page 125 of ZCL
   //***************************************
-  Serialprintln();
   if (frmType == 0x00 && cmdID == 0x00)
   {
     Serialprint(F("ColorControl Cluster attribute ID "));
@@ -1244,7 +1232,7 @@ void clstr_ColorControl(byte endPoint, byte frmType, byte seqNum, byte cmdID, wo
     if (cmdID == 0x07)                // Move to Colour XY
     {
       Serialprintln(F("(Move to Colour XY)"));
-      clstr_ColorControl_ColourMode = 0;
+      clstr_ColorControl_ColourMode = 1;
       clstr_ColorControl_A = (unsigned int)(zb._PktData()[4]) * 256 + byte(zb._PktData()[3]); 
       clstr_ColorControl_A_RemainingTime = byte(zb._PktData()[8]) * 256 + byte(zb._PktData()[7]); 
       clstr_ColorControl_A_Gradient = (clstr_ColorControl_A - clstr_ColorControl_A_Current) / clstr_ColorControl_A_RemainingTime;
@@ -1257,7 +1245,7 @@ void clstr_ColorControl(byte endPoint, byte frmType, byte seqNum, byte cmdID, wo
     } 
   }    
  
-  Serialprintln(F("Invalid type/command/attribute!"));
+  InvalidTypeOrCommand();
 }
 
 
@@ -1273,7 +1261,6 @@ void clstr_Temperature(byte endPoint, byte frmType, byte seqNum, byte cmdID, wor
   // ZCL Cluster 0x0006 On/Off Cluster
   // Section 3.8 on page 125 of ZCL
   //***************************************
-  Serialprintln();
   Serialprint(F("Temperature Cluster attribute ID "));
   Serialprint(attributeID,HEX);
   Serialprint(F(" "));
@@ -1284,7 +1271,7 @@ void clstr_Temperature(byte endPoint, byte frmType, byte seqNum, byte cmdID, wor
     Send29Response(get_Temperature(endPoint) * 100, 0x0000, seqNum);
     return;
   }
-  Serialprintln(F("Invalid type/command/attribute!"));
+  InvalidTypeOrCommand();
 }
 
 
@@ -1301,7 +1288,6 @@ void clstr_Pressure(byte endPoint, byte frmType, byte seqNum, byte cmdID, word a
   // ZCL Cluster 0x0006 On/Off Cluster
   // Section 3.8 on page 125 of ZCL
   //***************************************
-  Serialprintln();
   Serialprint(F("Pressure Cluster attribute ID "));
   Serialprint(attributeID,HEX);
   Serialprint(F(" "));
@@ -1312,7 +1298,7 @@ void clstr_Pressure(byte endPoint, byte frmType, byte seqNum, byte cmdID, word a
     Send29Response(get_Pressure(endPoint), 0x0000, seqNum);
     return;
   }
-  Serialprintln(F("Invalid type/command/attribute!"));
+  InvalidTypeOrCommand();
 }
 
 
@@ -1329,7 +1315,6 @@ void clstr_Humidity(byte endPoint, byte frmType, byte seqNum, byte cmdID, word a
   // ZCL Cluster 0x0006 On/Off Cluster
   // Section 3.8 on page 125 of ZCL
   //***************************************
-  Serialprintln();
   Serialprint(F("Humidity Cluster attribute ID "));
   Serialprint(attributeID,HEX);
   Serialprint(F(" "));
@@ -1340,7 +1325,7 @@ void clstr_Humidity(byte endPoint, byte frmType, byte seqNum, byte cmdID, word a
     Send21Response(get_Humidity(endPoint) * 100, 0x0000, seqNum);
     return;
   }
-  Serialprintln(F("Invalid type/command/attribute!"));
+  InvalidTypeOrCommand();
 }
 
 
@@ -1362,7 +1347,6 @@ void ZCLpkt()
   byte endPoint = zb._PktDEP();
   
   
-  Serialprintln();
   Serialprint(F("ZCL Packet received. Frame type:"));
   Serialprint(frmType,HEX);
   Serialprint(F(" Command:"));
@@ -1605,7 +1589,6 @@ void sendDefaultResponse(byte CmdID, byte Status, byte EndPoint)
 
   Buffer[4] = Status;                                                         // Status see Table 2.17 on page 67 of ZigBee Cluster Library
 
-  Serialprintln();
   Serialprint(F("Sending Default Response"));
   zb.TX(zb._PktIEEEAddHi(), zb._PktIEEEAddLo(), zb._PktNetAdd(), EndPoint, zb._PktSEP(), zb._PktProfile(), zb._PktCluster(), Buffer, 5);
 }
@@ -1699,6 +1682,27 @@ void Send10Report(byte endPoint, int Value, int cluster, int attribute)
   if (Value == true) {Serialprintln(F("True")); } else {Serialprintln(F("False")); }
 }
 
+void Send20Report(byte endPoint, byte Value, int cluster, int attribute)    
+{
+  if (BatteryPowered) WakeXBee(false);
+  
+  memset(Buffer, 0 , BufferSize);                                           // Read attributes
+  Buffer[0] = 0x18;                                                           // Frame Control 0x18 = direction is from server to client, disable default response P14 of ZCL
+  Buffer[1] = 0x11;                                                           // Set the sequence number
+  Buffer[2] = 0x0A;                                                           // Command Identifer 0x0A = Report attributes see Table 2.9 on page 16 of ZCL
+
+  Buffer[3] = lowByte(attribute);                                           // Attribute Identifier (2 bytes) field being reported see figure 2.24 on page 36 of ZCL
+  Buffer[4] = highByte(attribute);
+
+  Buffer[5] = 0x20;                                                         // Attribute Data Type 0x10 = Boolean, see Table 2.16 on page 54 of ZCL
+
+  Buffer[6] = Value;                                             // Attribute Data Field in this case 0x00 = Off, see Table 3.40 on page 126 of ZCL. Set the on / off status based on pin
+
+  zb.TX_Indirect(endPoint, 0x0104, cluster, Buffer, 7);                            // TX_Indirect(sEP, Prfl, Clstr, BuffAdd, BuffSize)
+  Serialprint(F("uint16 report sent:"));
+  Serialprintln(Value);
+}
+
 void Send21Report(byte endPoint, unsigned int Value, int cluster, int attribute)   
 { 
   if (BatteryPowered) WakeXBee(false);
@@ -1749,6 +1753,8 @@ void Send29Report(byte endPoint, int Value, int cluster, int attribute)
 // --------------------------------------------------------------------------------------------------
 void timerCallback()
 { 
+  bool UpdateLight = false;
+  
   if (clstr_LevelControl_RemainingTime > 0)
   {
       if ((unsigned int)clstr_LevelControl_CurrentLevel != clstr_LevelControl_Level)
@@ -1759,7 +1765,8 @@ void timerCallback()
           
         if (clstr_LevelControl_Command >= 4 && clstr_LevelControl_CurrentLevel > 0 && !get_OnOff(1)) set_OnOff(1,true);
         
-        clstr_LevelControlSetLevel(1, (byte)clstr_LevelControl_CurrentLevel);
+        //clstr_LevelControlSetLevel(1, (byte)clstr_LevelControl_CurrentLevel);
+        UpdateLight = true;
         clstr_LevelControl_RemainingTime--;
          
         if (clstr_LevelControl_Command >= 4 && clstr_LevelControl_CurrentLevel == 0 && get_OnOff(1)) set_OnOff(1,false);
@@ -1772,39 +1779,57 @@ void timerCallback()
   
   if (clstr_ColorControl_A_RemainingTime > 0)
   {
-      if ((unsigned int)clstr_ColorControl_A_Current != clstr_ColorControl_A)
-      {
-        clstr_ColorControl_A_Current += clstr_ColorControl_A_Gradient;
-       // if (clstr_ColorControl_A_Current > 255) clstr_ColorControl_A_Current = 255;
-        if (clstr_ColorControl_A_Current < 0) clstr_ColorControl_A_Current = 0;
-        clstr_ColorControlSetHueSaturation(1, (byte)clstr_ColorControl_A_Current, (byte)clstr_ColorControl_B_Current);
-        clstr_ColorControl_A_RemainingTime--;
-      }
-      else 
-        clstr_ColorControl_A_RemainingTime = 0;
+    if ((unsigned int)clstr_ColorControl_A_Current != clstr_ColorControl_A)
+    {
+      clstr_ColorControl_A_Current += clstr_ColorControl_A_Gradient;
+      
+      if (clstr_ColorControl_ColourMode == 0)
+        if (clstr_ColorControl_A_Current > 0xfe) clstr_ColorControl_A_Current = 0xfe;
+      else
+        if (clstr_ColorControl_A_Current > 0xfeff) clstr_ColorControl_A_Current = 0xfeff;
+
+      if (clstr_ColorControl_A_Current < 0) clstr_ColorControl_A_Current = 0;
+      UpdateLight = true;
+      clstr_ColorControl_A_RemainingTime--;
+    }
+    else 
+      clstr_ColorControl_A_RemainingTime = 0;
     
     if (clstr_ColorControl_A_RemainingTime == 0)
+      if (clstr_ColorControl_ColourMode == 0)
+        Send20Report(1, (unsigned int) clstr_ColorControl_A_Current, cluster_ColorControl, 0x0000);
+      else
         Send21Report(1, (unsigned int) clstr_ColorControl_A_Current, cluster_ColorControl, 0x0003);
-
   }
  
   if (clstr_ColorControl_B_RemainingTime > 0)
   { 
-      if ((unsigned int)clstr_ColorControl_B_Current != clstr_ColorControl_B)
-      {
-          clstr_ColorControl_B_Current += clstr_ColorControl_B_Gradient;
-      //    if (clstr_ColorControl_B_Current > 255) clstr_ColorControl_B_Current = 255;
-          if (clstr_ColorControl_B_Current < 0) clstr_ColorControl_B_Current = 0;
-          clstr_ColorControlSetHueSaturation(1, (byte)clstr_ColorControl_A_Current, (byte)clstr_ColorControl_B_Current);
-          clstr_ColorControl_B_RemainingTime--;
-      }
-      else 
-        clstr_ColorControl_B_RemainingTime = 0;
+    if ((unsigned int)clstr_ColorControl_B_Current != clstr_ColorControl_B)
+    {
+      clstr_ColorControl_B_Current += clstr_ColorControl_B_Gradient;
+      
+      if (clstr_ColorControl_ColourMode == 0)
+        if (clstr_ColorControl_B_Current > 0xfe) clstr_ColorControl_B_Current = 0xfe;
+      else
+        if (clstr_ColorControl_B_Current > 0xfeff) clstr_ColorControl_B_Current = 0xfeff;
     
-      if (clstr_ColorControl_B_RemainingTime == 0)  
+      if (clstr_ColorControl_B_Current < 0) clstr_ColorControl_B_Current = 0;
+      UpdateLight = true;
+      clstr_ColorControl_B_RemainingTime--;
+    }
+    else 
+      clstr_ColorControl_B_RemainingTime = 0;
+    
+    if (clstr_ColorControl_B_RemainingTime == 0)  
+      if (clstr_ColorControl_ColourMode == 0)
+        Send20Report(1, (unsigned int) clstr_ColorControl_B_Current, cluster_ColorControl, 0x0001);
+      else
         Send21Report(1, (unsigned int) clstr_ColorControl_B_Current, cluster_ColorControl, 0x0004);
+  } 
 
-  }  
+  
+  if (UpdateLight)
+      clstr_ColorControlSetColour(1, clstr_ColorControl_ColourMode, clstr_ColorControl_A_Current, clstr_ColorControl_B_Current, clstr_LevelControl_CurrentLevel);
 }
 
 void setup_ZigBee(Stream& port, byte _endpointClusterCount, bool _BatteryPowered)

@@ -70,9 +70,9 @@ EndpointCluster endpointClusters[]= {
   {1, cluster_OnOff},
   {1, cluster_LevelControl},
   {1, cluster_ColorControl},
-  {1, cluster_Temperature},
-  {1, cluster_Pressure},
-  {1, cluster_RelativeHumidity}
+//  {1, cluster_Temperature},
+//  {1, cluster_Pressure},
+//  {1, cluster_RelativeHumidity}
 }; 
 
 
@@ -109,8 +109,8 @@ const byte LEDPin=LED_BUILTIN;     // Pin that is connected to an LED's anode (p
 
 // Bosch BME280 / BMP280
 // ---------------------
-#define BME280
-#define TempSensorPowerPin 7
+//#define BME280
+//#define TempSensorPowerPin 7
 
 
 // Silicon Labs Si7021
@@ -138,6 +138,9 @@ const byte LEDPin=LED_BUILTIN;     // Pin that is connected to an LED's anode (p
 // ----------------------------------------------------------------
 //#define XBeeTemp
 
+
+#define AddressableLED
+#define ADDR_LED_DATA_PIN 8
 
 // --------------------------------------------------------------------------------------------------
 // -- This completes the configuration of the device. Further changes below should not be required --
@@ -240,35 +243,9 @@ const byte LEDPin=LED_BUILTIN;     // Pin that is connected to an LED's anode (p
 
 
 #ifdef AddressableLED
-  #include <bitswap.h>
-  #include <chipsets.h>
-  #include <color.h>
-  #include <colorpalettes.h>
-  #include <colorutils.h>
-  #include <controller.h>
-  #include <cpp_compat.h>
-  #include <dmx.h>
   #include <FastLED.h>
-  #include <fastled_config.h>
-  #include <fastled_delay.h>
-  #include <fastled_progmem.h>
-  #include <fastpin.h>
-  #include <fastspi.h>
-  #include <fastspi_bitbang.h>
-  #include <fastspi_dma.h>
-  #include <fastspi_nop.h>
-  #include <fastspi_ref.h>
-  #include <fastspi_types.h>
-  #include <hsv2rgb.h>
-  #include <led_sysdefs.h>
-  #include <lib8tion.h>
-  #include <noise.h>
-  #include <pixelset.h>
-  #include <pixeltypes.h>
-  #include <platforms.h>
-  #include <power_mgt.h>
-  CRGB leds[5 * 5];
-  #define NUM_LEDS 25
+  CRGB leds[8];
+  #define NUM_LEDS 8
 #endif
 
 // XBee devices setup
@@ -314,14 +291,6 @@ void setup()
     Serial.println(__TIME__);
   #endif
 
-  #ifdef AddressableLED
-    LEDS.addLeds<WS2811,5,RGB>(leds,NUM_LEDS);
-    LEDS.setBrightness(96);   
-    for(int i = 0; i < 25; i++) {
-      leds[1] = CHSV(2,255,100);
-    }
-    LEDS.show();
-  #endif  
   
   // On Off cluster setup
   #ifdef OnOffButton
@@ -379,6 +348,16 @@ void setup()
     
   #ifdef OnOffButton
     attachInterrupt(digitalPinToInterrupt(ButtonPin), buttonPressed, CHANGE);
+  #endif
+
+  #ifdef AddressableLED
+    FastLED.addLeds<WS2812B, ADDR_LED_DATA_PIN, RGB>(leds, NUM_LEDS);
+    
+    for(int i = 0; i < NUM_LEDS; i++) {
+      leds[i] = CHSV(i*30,255,10);
+    }
+ 
+    FastLED.show();
   #endif
 
   Serial1.begin(XBeeBaud);
@@ -473,21 +452,66 @@ void set_OnOff(byte endPoint, bool On)
         Serial.print(F(" set to ground)"));
       }
     #endif  
+
+    clstr_ColorControlSetColour(1, clstr_ColorControl_ColourMode, (byte)clstr_ColorControl_A_Current, (byte)clstr_ColorControl_B_Current, On?(byte)clstr_LevelControl_CurrentLevel:0);
   }
 }
 
-void clstr_LevelControlSetLevel(byte endPoint, byte level)
-{
-  Serial.print(F("Level:"));
-  Serial.println(level);
-}
 
-void clstr_ColorControlSetHueSaturation(byte endPoint, byte hue, byte saturation)
+void clstr_ColorControlSetColour(byte endPoint, byte ColourMode, float hue, float saturation, float level)
 {
-  Serial.print(F("Hue:"));
-  Serial.print(hue);
-  Serial.print(F("  Saturation:"));
-  Serial.println(saturation);  
+  //Serial.print("x:");
+  //Serial.print(hue);
+  //Serial.print("y:");
+  //Serial.print(saturation);
+  //Serial.print("YY:");
+  //Serial.print(level);
+  
+  #ifdef AddressableLED
+    if (ColourMode == 0)
+    {
+      leds[0] = CHSV((byte)hue, (byte)saturation, (byte)level); 
+    }
+    else
+    {
+      float x = (float)hue / 65536.0;
+      float y = (float)saturation / 65536.0;
+      float z = 1.0f - x - y;
+
+      float Y = 1; //(float) level / 256.0; // The given brightness value
+      float X = (Y / y) * x;
+      float Z = (Y / y) * z;
+
+      //printf("xyY %f %f %f\n", x, y, Y);
+
+      //printf("XYZ %f %f %f\n", X, Y, Z);
+
+      float rgb[3];
+
+      rgb[0] = X * 3.2404542 +  Y * -1.5371385 + Z * -0.4985314;
+      rgb[1] = X * -0.9692660 + Y * 1.8760108  + Z * 0.0415560;
+      rgb[2] = X * 0.0556434 +  Y * -0.2040259 + Z * 1.0572252;
+      //printf("RGB1 %f %f %f\n", rgb[0], rgb[1], rgb[2]);
+
+      float maxval = max(rgb[0], max(rgb[1], rgb[2]));
+      float scale = 256;
+     
+      if (maxval > 1)
+      {
+        for (int i = 0; i < 3; i++)
+        rgb[i] = rgb[i] / maxval;
+      }
+
+      //printf("RGB2 %f %f %f\n", rgb[0], rgb[1], rgb[2]);
+
+      for (int i = 0; i < 3; i++)
+        rgb[i] = max((rgb[i] <= 0.0031308f ? 12.92f * rgb[i] : (1.0f + 0.055f) * pow(rgb[i], (1.0f / 2.4f)) - 0.055f) * 256, 0);
+        
+      leds[0] = CRGB((byte)rgb[1], (byte)rgb[0], (byte)rgb[2]); 
+      leds[0] %=  level; // / 256;
+    }
+    FastLED.show();
+  #endif
 }
 
 void toggle_OnOff(byte endPoint)
@@ -500,6 +524,8 @@ void toggle_OnOff(byte endPoint)
       Serial.print(LEDPin,DEC);
       Serial.print(F(" toggled)")); 
     #endif 
+
+    clstr_ColorControlSetColour(1, clstr_ColorControl_ColourMode, (byte)clstr_ColorControl_A_Current, (byte)clstr_ColorControl_B_Current, pinState(LEDPin)?(byte)clstr_LevelControl_CurrentLevel:0);
   }
 }
 
