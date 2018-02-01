@@ -61,14 +61,14 @@ unsigned int clstr_LevelControl_RemainingTime;
 float clstr_LevelControl_Gradient;
 
 byte         clstr_ColorControl_ColourMode;
+unsigned int clstr_ColorControl_RemainingTime;
+
 float        clstr_ColorControl_A_Current;
 unsigned int clstr_ColorControl_A;
-unsigned int clstr_ColorControl_A_RemainingTime;
 float        clstr_ColorControl_A_Gradient;
 
 float        clstr_ColorControl_B_Current;
 unsigned int clstr_ColorControl_B;
-unsigned int clstr_ColorControl_B_RemainingTime;
 float        clstr_ColorControl_B_Gradient;
 
 
@@ -146,7 +146,7 @@ void PrintHex(uint8_t *data, uint8_t length)            // prints 8-bit data in 
 
 void FuncNotImplemented()
 {
-  Serial.println(F("** FUNCTION NOT IMPLEMENTED **"));
+  Serialprintln(F("** FUNCTION NOT IMPLEMENTED **"));
 }
 
 void InvalidTypeOrCommand()
@@ -484,7 +484,7 @@ int CheckInboundPackets(bool extendedTimeout)
   
   do
   {
-    rxResult = zb.RX(extendedTimeout?500:20);                                                     // Check for incoming packets for 10ms
+    rxResult = zb.RX(extendedTimeout?500:10);                                                     // Check for incoming packets for 10ms
 
     // XBee packet received. Process
     if (rxResult != -2)
@@ -761,11 +761,11 @@ void Active_EP_req()                                                          //
   Buffer[4] = get_EndPointList(EndPointList);                                 // Active EndPoint count only one in this case page 161 of ZBSpec
   memcpy(&Buffer[5], EndPointList, endPointCount);                                       // Copy byte string array into buffer
 
-    for (int i=0; i<5 + endPointCount; i++)
+  for (int i=0; i<5 + endPointCount; i++)
   {
-    Serial.print((uint8_t)Buffer[i] >> 4, HEX);
-    Serial.print((uint8_t)Buffer[i] & 0x0f, HEX);
-   Serial.print(" ");
+    Serialprint((uint8_t)Buffer[i] >> 4, HEX);
+    Serialprint((uint8_t)Buffer[i] & 0x0f, HEX);
+    Serialprint(" ");
   }
   
   zb.TX(zb._PktIEEEAddHi(), zb._PktIEEEAddLo(), zb._PktNetAdd(), 0, 0, 0, 0x8005, Buffer, 5 + endPointCount);
@@ -973,7 +973,7 @@ void clstr_LevelControl(byte endPoint, byte frmType, byte seqNum, byte cmdID, wo
     if (cmdID == 0x00 || cmdID == 0x04)                // Move to Level
     {
       clstr_LevelControl_Level = byte(zb._PktData()[3]);
-      clstr_LevelControl_RemainingTime = byte(zb._PktData()[5]) * 256 + byte(zb._PktData()[4]); 
+      clstr_LevelControl_RemainingTime = (byte(zb._PktData()[5]) * 256 + byte(zb._PktData()[4])) * 100 / Light_Update_Interval; 
       clstr_LevelControl_Gradient = (clstr_LevelControl_Level - clstr_LevelControl_CurrentLevel) / clstr_LevelControl_RemainingTime;
       sendDefaultResponse(cmdID, 0x00, 0x01); 
       return;
@@ -1006,7 +1006,7 @@ void clstr_LevelControl(byte endPoint, byte frmType, byte seqNum, byte cmdID, wo
       {
         clstr_LevelControl_Level = clstr_LevelControl_CurrentLevel - byte(zb._PktData()[4]);
       }
-      clstr_LevelControl_RemainingTime = byte(zb._PktData()[6]) * 256 + byte(zb._PktData()[5]); 
+      clstr_LevelControl_RemainingTime = (byte(zb._PktData()[6]) * 256 + byte(zb._PktData()[5])) * 100 / Light_Update_Interval; 
       clstr_LevelControl_Gradient = (clstr_LevelControl_Level - clstr_LevelControl_CurrentLevel) / clstr_LevelControl_RemainingTime;
       sendDefaultResponse(cmdID, 0x00, 0x01);                                   // Send Default response back to originator of command
       return;
@@ -1113,8 +1113,8 @@ void clstr_ColorControl(byte endPoint, byte frmType, byte seqNum, byte cmdID, wo
       Serialprintln(F("(Move to Hue)"));
       clstr_ColorControl_ColourMode = 0;
       clstr_ColorControl_A = byte(zb._PktData()[3]);
-      clstr_ColorControl_A_RemainingTime = byte(zb._PktData()[6]) * 256 + byte(zb._PktData()[5]); 
-      clstr_ColorControl_A_Gradient = (clstr_ColorControl_A - clstr_ColorControl_A_Current) / clstr_ColorControl_A_RemainingTime;
+      clstr_ColorControl_RemainingTime = (byte(zb._PktData()[6]) * 256 + byte(zb._PktData()[5])) * 100 / Light_Update_Interval; 
+      clstr_ColorControl_A_Gradient = (clstr_ColorControl_A - clstr_ColorControl_A_Current) / clstr_ColorControl_RemainingTime;
       sendDefaultResponse(cmdID, 0x00, 0x01); 
       return;
     }
@@ -1126,19 +1126,19 @@ void clstr_ColorControl(byte endPoint, byte frmType, byte seqNum, byte cmdID, wo
       if (byte(zb._PktData()[3]) == 0) 
       {
           clstr_ColorControl_A = clstr_ColorControl_A_Current;
-          clstr_ColorControl_A_RemainingTime = 0;
+          clstr_ColorControl_RemainingTime = 0;
       }
       if (byte(zb._PktData()[3]) == 1)
       {
         clstr_ColorControl_A = 255;
         clstr_ColorControl_A_Gradient = byte(zb._PktData()[4]) / 10;
-        clstr_ColorControl_A_RemainingTime = 0xffff;
+        clstr_ColorControl_RemainingTime = 0xffff;
       }
       if (byte(zb._PktData()[3]) == 3)
       {
         clstr_ColorControl_A = 0;
         clstr_ColorControl_A_Gradient = -byte(zb._PktData()[4]) / 10;
-        clstr_ColorControl_A_RemainingTime = 0xffff;
+        clstr_ColorControl_RemainingTime = 0xffff;
       }
       sendDefaultResponse(cmdID, 0x00, 0x01);                                   // Send Default response back to originator of command
       return;
@@ -1156,8 +1156,8 @@ void clstr_ColorControl(byte endPoint, byte frmType, byte seqNum, byte cmdID, wo
       {
         clstr_ColorControl_A = clstr_ColorControl_A_Current - byte(zb._PktData()[4]);
       }
-      clstr_ColorControl_A_RemainingTime = /*byte(zb._PktData()[6]) * 256 + */byte(zb._PktData()[5]); 
-      clstr_ColorControl_A_Gradient = (clstr_ColorControl_A - clstr_ColorControl_A_Current) / clstr_ColorControl_A_RemainingTime;
+      clstr_ColorControl_RemainingTime = (byte(zb._PktData()[5])) * 100 / Light_Update_Interval; 
+      clstr_ColorControl_A_Gradient = (clstr_ColorControl_A - clstr_ColorControl_A_Current) / clstr_ColorControl_RemainingTime;
       sendDefaultResponse(cmdID, 0x00, 0x01); 
       return;
     } 
@@ -1166,9 +1166,9 @@ void clstr_ColorControl(byte endPoint, byte frmType, byte seqNum, byte cmdID, wo
     {
       Serialprintln(F("(Move to Saturation)"));
       clstr_ColorControl_ColourMode = 0;
+      clstr_ColorControl_RemainingTime = (byte(zb._PktData()[5]) * 256 + byte(zb._PktData()[4])) * 100 / Light_Update_Interval; 
       clstr_ColorControl_B = byte(zb._PktData()[3]);
-      clstr_ColorControl_B_RemainingTime = byte(zb._PktData()[5]) * 256 + byte(zb._PktData()[4]); 
-      clstr_ColorControl_B_Gradient = (clstr_ColorControl_B - clstr_ColorControl_B_Current) / clstr_ColorControl_B_RemainingTime;
+      clstr_ColorControl_B_Gradient = (clstr_ColorControl_B - clstr_ColorControl_B_Current) / clstr_ColorControl_RemainingTime;
       sendDefaultResponse(cmdID, 0x00, 0x01); 
       return;
     } 
@@ -1180,19 +1180,19 @@ void clstr_ColorControl(byte endPoint, byte frmType, byte seqNum, byte cmdID, wo
       if (byte(zb._PktData()[3]) == 0) 
       {
         clstr_ColorControl_B = clstr_ColorControl_B_Current;
-        clstr_ColorControl_B_RemainingTime = 0;
+        clstr_ColorControl_RemainingTime = 0;
       }
       if (byte(zb._PktData()[3]) == 1)
       {
         clstr_ColorControl_B = 255;
         clstr_ColorControl_B_Gradient = byte(zb._PktData()[4]) / 10;
-        clstr_ColorControl_B_RemainingTime = 0xffff;
+        clstr_ColorControl_RemainingTime = 0xffff;
         }
         if (byte(zb._PktData()[3]) == 3)
         {
         clstr_ColorControl_B = 0;
         clstr_ColorControl_B_Gradient = -byte(zb._PktData()[4]) / 10;
-        clstr_ColorControl_B_RemainingTime = 0xffff;
+        clstr_ColorControl_RemainingTime = 0xffff;
       }
       sendDefaultResponse(cmdID, 0x00, 0x01); 
       return;
@@ -1210,8 +1210,8 @@ void clstr_ColorControl(byte endPoint, byte frmType, byte seqNum, byte cmdID, wo
       {
         clstr_ColorControl_B = clstr_ColorControl_B_Current - byte(zb._PktData()[4]);
       }
-      clstr_ColorControl_B_RemainingTime = /*byte(zb._PktData()[6]) * 256 + */byte(zb._PktData()[5]); 
-      clstr_ColorControl_B_Gradient = (clstr_ColorControl_B - clstr_ColorControl_B_Current) / clstr_ColorControl_B_RemainingTime;
+      clstr_ColorControl_RemainingTime = (byte(zb._PktData()[5])) * 100 / Light_Update_Interval; 
+      clstr_ColorControl_B_Gradient = (clstr_ColorControl_B - clstr_ColorControl_B_Current) / clstr_ColorControl_RemainingTime;
       sendDefaultResponse(cmdID, 0x00, 0x01); 
       return;
     } 
@@ -1220,12 +1220,11 @@ void clstr_ColorControl(byte endPoint, byte frmType, byte seqNum, byte cmdID, wo
     {
       Serialprintln(F("(Move to Hue and Saturation)"));
       clstr_ColorControl_ColourMode = 0;
+      clstr_ColorControl_RemainingTime = (byte(zb._PktData()[6]) * 256 + byte(zb._PktData()[5])) * 100 / Light_Update_Interval; 
       clstr_ColorControl_A = byte(zb._PktData()[3]);
-      clstr_ColorControl_A_RemainingTime = byte(zb._PktData()[6]) * 256 + byte(zb._PktData()[5]); 
-      clstr_ColorControl_A_Gradient = (clstr_ColorControl_A - clstr_ColorControl_A_Current) / clstr_ColorControl_A_RemainingTime;
+      clstr_ColorControl_A_Gradient = (clstr_ColorControl_A - clstr_ColorControl_A_Current) / clstr_ColorControl_RemainingTime;
       clstr_ColorControl_B = byte(zb._PktData()[4]);
-      clstr_ColorControl_B_RemainingTime = byte(zb._PktData()[6]) * 256 + byte(zb._PktData()[5]); 
-      clstr_ColorControl_B_Gradient = (clstr_ColorControl_B - clstr_ColorControl_B_Current) / clstr_ColorControl_B_RemainingTime;
+      clstr_ColorControl_B_Gradient = (clstr_ColorControl_B - clstr_ColorControl_B_Current) / clstr_ColorControl_RemainingTime;
 
       sendDefaultResponse(cmdID, 0x00, 0x01); 
       return;
@@ -1235,12 +1234,11 @@ void clstr_ColorControl(byte endPoint, byte frmType, byte seqNum, byte cmdID, wo
     {
       Serialprintln(F("(Move to Colour XY)"));
       clstr_ColorControl_ColourMode = 1;
+      clstr_ColorControl_RemainingTime = (byte(zb._PktData()[8]) * 256 + byte(zb._PktData()[7])) * 100 / Light_Update_Interval; 
       clstr_ColorControl_A = (unsigned int)(zb._PktData()[4]) * 256 + byte(zb._PktData()[3]); 
-      clstr_ColorControl_A_RemainingTime = (byte(zb._PktData()[8]) * 256 + byte(zb._PktData()[7])) * 100 / Light_Update_Interval; 
-      clstr_ColorControl_A_Gradient = (clstr_ColorControl_A - clstr_ColorControl_A_Current) / clstr_ColorControl_A_RemainingTime;
+      clstr_ColorControl_A_Gradient = (clstr_ColorControl_A - clstr_ColorControl_A_Current) / clstr_ColorControl_RemainingTime;
       clstr_ColorControl_B = (unsigned int)(zb._PktData()[6]) * 256 + byte(zb._PktData()[5]);
-      clstr_ColorControl_B_RemainingTime = clstr_ColorControl_A_RemainingTime; 
-      clstr_ColorControl_B_Gradient = (clstr_ColorControl_B - clstr_ColorControl_B_Current) / clstr_ColorControl_B_RemainingTime;
+      clstr_ColorControl_B_Gradient = (clstr_ColorControl_B - clstr_ColorControl_B_Current) / clstr_ColorControl_RemainingTime;
 
       sendDefaultResponse(cmdID, 0x00, 0x01); 
       return;
@@ -1755,8 +1753,6 @@ void Send29Report(byte endPoint, int Value, int cluster, int attribute)
 // --------------------------------------------------------------------------------------------------
 void timerCallback()
 { 
-  bool UpdateLight = false;
-  
   if (clstr_LevelControl_RemainingTime > 0)
   {
       if ((unsigned int)clstr_LevelControl_CurrentLevel != clstr_LevelControl_Level)
@@ -1767,8 +1763,7 @@ void timerCallback()
           
         if (clstr_LevelControl_Command >= 4 && clstr_LevelControl_CurrentLevel > 0 && !get_OnOff(1)) set_OnOff(1,true);
         
-        //clstr_LevelControlSetLevel(1, (byte)clstr_LevelControl_CurrentLevel);
-        UpdateLight = true;
+        Update_Lighting = true;
         clstr_LevelControl_RemainingTime--;
          
         if (clstr_LevelControl_Command >= 4 && clstr_LevelControl_CurrentLevel == 0 && get_OnOff(1)) set_OnOff(1,false);
@@ -1779,7 +1774,7 @@ void timerCallback()
       }
   }
   
-  if (clstr_ColorControl_A_RemainingTime > 0)
+  if (clstr_ColorControl_RemainingTime > 0)
   {
     if ((unsigned int)clstr_ColorControl_A_Current != clstr_ColorControl_A)
     {
@@ -1791,21 +1786,9 @@ void timerCallback()
         if (clstr_ColorControl_A_Current > 0xfeff) clstr_ColorControl_A_Current = 0xfeff;
 
       if (clstr_ColorControl_A_Current < 0) clstr_ColorControl_A_Current = 0;
-      UpdateLight = true;
-      clstr_ColorControl_A_RemainingTime--;
+      Update_Lighting = true;
     }
-    else 
-      clstr_ColorControl_A_RemainingTime = 0;
     
-    if (clstr_ColorControl_A_RemainingTime == 0)
-      if (clstr_ColorControl_ColourMode == 0)
-        Send20Report(1, (unsigned int) clstr_ColorControl_A_Current, cluster_ColorControl, 0x0000);
-      else
-        Send21Report(1, (unsigned int) clstr_ColorControl_A_Current, cluster_ColorControl, 0x0003);
-  }
- 
-  if (clstr_ColorControl_B_RemainingTime > 0)
-  { 
     if ((unsigned int)clstr_ColorControl_B_Current != clstr_ColorControl_B)
     {
       clstr_ColorControl_B_Current += clstr_ColorControl_B_Gradient;
@@ -1816,23 +1799,26 @@ void timerCallback()
         if (clstr_ColorControl_B_Current > 0xfeff) clstr_ColorControl_B_Current = 0xfeff;
     
       if (clstr_ColorControl_B_Current < 0) clstr_ColorControl_B_Current = 0;
-      UpdateLight = true;
-      clstr_ColorControl_B_RemainingTime--;
-    }
-    else 
-      clstr_ColorControl_B_RemainingTime = 0;
-    
-    if (clstr_ColorControl_B_RemainingTime == 0)  
-      if (clstr_ColorControl_ColourMode == 0)
-        Send20Report(1, (unsigned int) clstr_ColorControl_B_Current, cluster_ColorControl, 0x0001);
-      else
-        Send21Report(1, (unsigned int) clstr_ColorControl_B_Current, cluster_ColorControl, 0x0004);
-  } 
-
-  
-  if (UpdateLight)
       Update_Lighting = true;
-    //  clstr_ColorControlSetColour(1, clstr_ColorControl_ColourMode, clstr_ColorControl_A_Current, clstr_ColorControl_B_Current, clstr_LevelControl_CurrentLevel);
+    } 
+    
+    if (Update_Lighting)
+      clstr_ColorControl_RemainingTime--;
+    else 
+    {
+      clstr_ColorControl_RemainingTime = 0;
+      if (clstr_ColorControl_ColourMode == 0)
+      {
+        Send20Report(1, (unsigned int) clstr_ColorControl_A_Current, cluster_ColorControl, 0x0000);
+        Send20Report(1, (unsigned int) clstr_ColorControl_B_Current, cluster_ColorControl, 0x0001);
+      }
+      else
+      {
+        Send21Report(1, (unsigned int) clstr_ColorControl_A_Current, cluster_ColorControl, 0x0003);
+        Send21Report(1, (unsigned int) clstr_ColorControl_B_Current, cluster_ColorControl, 0x0004);
+      }
+    }
+  }
 }
 
 void setup_ZigBee(Stream& port, byte _endpointClusterCount, bool _BatteryPowered)

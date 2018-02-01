@@ -141,7 +141,7 @@ const byte LEDPin=LED_BUILTIN;     // Pin that is connected to an LED's anode (p
 
 #define AddressableLED
 #define ADDR_LED_DATA_PIN 8
-byte Light_Update_Interval = 30;
+byte Light_Update_Interval = 20;
 
 // --------------------------------------------------------------------------------------------------
 // -- This completes the configuration of the device. Further changes below should not be required --
