@@ -1,8 +1,13 @@
 #include "ZigBee.h"
 #include <ZigBeeAPI.h>
 #include <SoftwareSerial.h>
-#include <avr/sleep.h>
-#include "TimerOne.h"
+
+#if defined(__AVR__)
+  #include <avr/sleep.h>
+  #include "TimerOne.h"
+#endif
+
+
 
 
 const char mths[] PROGMEM = {"Jan01Feb02Mar03Apr04May05Jun06Jul07Aug08Sep09Oct10Nov11Dec12"};
@@ -11,7 +16,7 @@ extern EndpointCluster endpointClusters[];
 byte endpointClusterCount; 
 
 byte Buffer[BufferSize];
-word LclNet = 0;
+uint16_t LclNet = 0;
 unsigned long LclIeeeLo = 0;
 unsigned long LclIeeeHi = 0;
 unsigned long now = 0;
@@ -60,16 +65,16 @@ byte clstr_LevelControl_Level;
 unsigned int clstr_LevelControl_RemainingTime;
 float clstr_LevelControl_Gradient;
 
-byte         clstr_ColorControl_ColourMode;
-unsigned int clstr_ColorControl_RemainingTime;
+byte     clstr_ColorControl_ColourMode;
+uint16_t clstr_ColorControl_RemainingTime;
 
-float        clstr_ColorControl_A_Current;
-unsigned int clstr_ColorControl_A;
-float        clstr_ColorControl_A_Gradient;
+float    clstr_ColorControl_A_Current;
+uint16_t clstr_ColorControl_A;
+float    clstr_ColorControl_A_Gradient;
 
-float        clstr_ColorControl_B_Current;
-unsigned int clstr_ColorControl_B;
-float        clstr_ColorControl_B_Gradient;
+float    clstr_ColorControl_B_Current;
+uint16_t clstr_ColorControl_B;
+float    clstr_ColorControl_B_Gradient;
 
 
 byte Sensor_ReportFreq = 4; // Wake cycles for sleepy device, ms for non sleepy
@@ -133,8 +138,10 @@ void formatDate(char const *date, char const *tm, char *buff)
   buff[15] = 0;
 }
 
-void PrintHex(uint8_t *data, uint8_t length)            // prints 8-bit data in hex
+void PrintHex(uint8_t * data, uint8_t length)            // prints 8-bit data in hex
 {
+  // uint8_t * d = &data;
+   
   for (int i=0; i<=length; i++)
   {
     Serialprint((uint8_t)data[i] >> 4, HEX);
@@ -143,6 +150,17 @@ void PrintHex(uint8_t *data, uint8_t length)            // prints 8-bit data in 
   }
   return;
 }
+
+/*void PrintHex(int data, int length)            // prints 8-bit data in hex
+{
+  for (int i=0; i<=length; i++)
+  {
+    Serialprint((int)data[i] >> 4, HEX);
+    Serialprint((int)data[i] & 0x0f, HEX);
+    if (i <length) Serialprint(" ");
+  }
+  return;
+}*/
 
 void FuncNotImplemented()
 {
@@ -207,18 +225,20 @@ void sleepNow()         // here we put the arduino to sleep
     
     digitalWrite(XBeeRTS, HIGH);
   
-    set_sleep_mode(SLEEP_MODE_PWR_DOWN);   // sleep mode is set here
+    #if defined(__AVR__)
+      set_sleep_mode(SLEEP_MODE_PWR_DOWN);   // sleep mode is set here
  
-    sleep_enable();          // enables the sleep bit in the mcucr register so sleep is possible. just a safety pin
+      sleep_enable();          // enables the sleep bit in the mcucr register so sleep is possible. just a safety pin
  
   //Serialprintln(F("Arduino Sleeping, waiting for awake signal"));
 
-    delay(100);
+      delay(100);
     
-    sleep_mode();            // Put the device  to sleep!! THE PROGRAM CONTINUES FROM HERE AFTER WAKING UP
+      sleep_mode();            // Put the device  to sleep!! THE PROGRAM CONTINUES FROM HERE AFTER WAKING UP
 
-    sleep_disable();         // first thing after waking from sleep:
-   
+      sleep_disable();         // first thing after waking from sleep:
+    #endif
+    
     if (XBeeIsAwake)
     {
       Serialprintln(F("XBee is Awake, Arduino Waking"));
@@ -527,11 +547,11 @@ void ProcessInboundPacket(int rxResult)
   //  Serialprintln();
   
     Serialprint(F("\tProfile ID:"));
-    Serialprintln(word(zb._PktProfile()),HEX);
+    Serialprintln(uint16_t(zb._PktProfile()),HEX);
   //  Serialprintln();
   
     Serialprint(F("\tCluster ID:"));
-    Serialprintln(word(zb._PktCluster()),HEX);
+    Serialprintln(uint16_t(zb._PktCluster()),HEX);
  //   Serialprintln();
   
     Serialprint(F("\tPayload Hex:"));
@@ -601,7 +621,7 @@ void ZDOpkt()
   // http://www.zigbee.org/wp-content/uploads/2014/11/docs-05-3474-20-0csg-zigbee-specification.pdf
   //***************************************
   Serialprint(F("ZDOpkt Packet Received. Cluster:0x"));
-  PrintHex(int(zb._PktCluster()), 4); 
+  PrintHex((uint8_t * )(zb._PktCluster()), (uint8_t)4); 
   
   switch (int(zb._PktCluster()))
   {
@@ -616,7 +636,7 @@ void ZDOpkt()
   }
 }
 
-int get_EndPointList(byte *list)
+int get_EndPointList(char *list)
 {
   byte endPointCount = 0;
   //int charPtr=0;
@@ -746,7 +766,7 @@ void Active_EP_req()                                                          //
   // The results of this request are returned in ZDO Cluster 0x8005, a packet that list the end point count and each end point number.
   //***************************************
   
-  byte EndPointList[ClusterListSize];
+  char EndPointList[ClusterListSize];
     
   int endPointCount = get_EndPointList(EndPointList);
   
@@ -776,7 +796,7 @@ void Active_EP_req()                                                          //
 // --------------------------------------
 // Zigbee Cluster Library commands
 // --------------------------------------
-void clstr_Basic(byte frmType, byte seqNum, byte cmdID, word attributeID)                                                            // Cluster 0x0000 Basic
+void clstr_Basic(byte frmType, byte seqNum, byte cmdID, uint16_t attributeID)                                                            // Cluster 0x0000 Basic
 {
   char Buf[16];
   
@@ -846,7 +866,7 @@ void clstr_Basic(byte frmType, byte seqNum, byte cmdID, word attributeID)       
 }
 
 
-void clstr_PowerConfiguration(byte frmType, byte seqNum, byte cmdID, word attributeID)                                                            // Cluster 0x0402 Temp
+void clstr_PowerConfiguration(byte frmType, byte seqNum, byte cmdID, uint16_t attributeID)                                                            // Cluster 0x0402 Temp
 {
   //***************************************
   // ZCL Cluster 0x0006 On/Off Cluster
@@ -866,8 +886,8 @@ void clstr_PowerConfiguration(byte frmType, byte seqNum, byte cmdID, word attrib
 }
 
 
-void clstr_DeviceTemperature(byte endPoint, byte frmType, byte seqNum, byte cmdID, word attributeID) __attribute__((weak));
-void clstr_DeviceTemperature(byte endPoint, byte frmType, byte seqNum, byte cmdID, word attributeID)
+void clstr_DeviceTemperature(byte endPoint, byte frmType, byte seqNum, byte cmdID, uint16_t attributeID) __attribute__((weak));
+void clstr_DeviceTemperature(byte endPoint, byte frmType, byte seqNum, byte cmdID, uint16_t attributeID)
 {
   FuncNotImplemented(); 
 }
@@ -892,7 +912,7 @@ void toggle_OnOff(byte endPoint)
   FuncNotImplemented(); 
 }
 
-void clstr_OnOff(byte endPoint, byte frmType, byte seqNum, byte cmdID, word attributeID)                                                            // Cluster 0x0006 On/Off
+void clstr_OnOff(byte endPoint, byte frmType, byte seqNum, byte cmdID, uint16_t attributeID)                                                            // Cluster 0x0006 On/Off
 {
   //***************************************
   // ZCL Cluster 0x0006 On/Off Cluster
@@ -933,7 +953,7 @@ void clstr_OnOff(byte endPoint, byte frmType, byte seqNum, byte cmdID, word attr
 }
 
 
-void clstr_LevelControl(byte endPoint, byte frmType, byte seqNum, byte cmdID, word attributeID)                                                            // Cluster 0x0006 On/Off
+void clstr_LevelControl(byte endPoint, byte frmType, byte seqNum, byte cmdID, uint16_t attributeID)                                                            // Cluster 0x0006 On/Off
 {
   //***************************************
   // ZCL Cluster 0x0006 On/Off Cluster
@@ -1032,7 +1052,7 @@ void clstr_ColorControlSetColour(byte endPoint, byte ColourMode, float hue, floa
 }
 
 
-void clstr_ColorControl(byte endPoint, byte frmType, byte seqNum, byte cmdID, word attributeID)                                                            // Cluster 0x0006 On/Off
+void clstr_ColorControl(byte endPoint, byte frmType, byte seqNum, byte cmdID, uint16_t attributeID)                                                            // Cluster 0x0006 On/Off
 {
   //***************************************
   // ZCL Cluster 0x0006 On/Off Cluster
@@ -1215,7 +1235,7 @@ void clstr_ColorControl(byte endPoint, byte frmType, byte seqNum, byte cmdID, wo
       sendDefaultResponse(cmdID, 0x00, 0x01); 
       return;
     } 
-  
+ 
     if (cmdID == 0x06)                // Move to Hue and Saturation
     {
       Serialprintln(F("(Move to Hue and Saturation)"));
@@ -1229,15 +1249,15 @@ void clstr_ColorControl(byte endPoint, byte frmType, byte seqNum, byte cmdID, wo
       sendDefaultResponse(cmdID, 0x00, 0x01); 
       return;
     } 
-      
+       
     if (cmdID == 0x07)                // Move to Colour XY
     {
       Serialprintln(F("(Move to Colour XY)"));
       clstr_ColorControl_ColourMode = 1;
-      clstr_ColorControl_RemainingTime = (byte(zb._PktData()[8]) * 256 + byte(zb._PktData()[7])) * 100 / Light_Update_Interval; 
-      clstr_ColorControl_A = (unsigned int)(zb._PktData()[4]) * 256 + byte(zb._PktData()[3]); 
+      clstr_ColorControl_RemainingTime = ((uint16_t)(zb._PktData()[8]) * 256 + (uint16_t)(zb._PktData()[7]) * 100 / Light_Update_Interval); 
+      clstr_ColorControl_A = (uint16_t)(zb._PktData()[4]) * 256 + uint16_t(zb._PktData()[3]); 
       clstr_ColorControl_A_Gradient = (clstr_ColorControl_A - clstr_ColorControl_A_Current) / clstr_ColorControl_RemainingTime;
-      clstr_ColorControl_B = (unsigned int)(zb._PktData()[6]) * 256 + byte(zb._PktData()[5]);
+      clstr_ColorControl_B = (uint16_t)(zb._PktData()[6]) * 256 + uint16_t(zb._PktData()[5]);
       clstr_ColorControl_B_Gradient = (clstr_ColorControl_B - clstr_ColorControl_B_Current) / clstr_ColorControl_RemainingTime;
 
       sendDefaultResponse(cmdID, 0x00, 0x01); 
@@ -1255,7 +1275,7 @@ float get_Temperature(byte endPoint)
   FuncNotImplemented();  
 }
 
-void clstr_Temperature(byte endPoint, byte frmType, byte seqNum, byte cmdID, word attributeID)                                                            // Cluster 0x0402 Temp
+void clstr_Temperature(byte endPoint, byte frmType, byte seqNum, byte cmdID, uint16_t attributeID)                                                            // Cluster 0x0402 Temp
 {
   //***************************************
   // ZCL Cluster 0x0006 On/Off Cluster
@@ -1282,7 +1302,7 @@ float get_Pressure(byte endPoint)
   FuncNotImplemented(); 
 }
 
-void clstr_Pressure(byte endPoint, byte frmType, byte seqNum, byte cmdID, word attributeID)                                                            // Cluster 0x0402 Temp
+void clstr_Pressure(byte endPoint, byte frmType, byte seqNum, byte cmdID, uint16_t attributeID)                                                            // Cluster 0x0402 Temp
 {
   //***************************************
   // ZCL Cluster 0x0006 On/Off Cluster
@@ -1309,7 +1329,7 @@ float get_Humidity(byte endPoint)
   FuncNotImplemented(); 
 }
 
-void clstr_Humidity(byte endPoint, byte frmType, byte seqNum, byte cmdID, word attributeID)                                                            // Cluster 0x0402 Temp
+void clstr_Humidity(byte endPoint, byte frmType, byte seqNum, byte cmdID, uint16_t attributeID)                                                            // Cluster 0x0402 Temp
 {
   //***************************************
   // ZCL Cluster 0x0006 On/Off Cluster
@@ -1337,7 +1357,7 @@ void ZCLpkt()
   // http://www.zigbee.org/wp-content/uploads/2014/11/docs-07-5123-04-zigbee-cluster-library-specification.pdf
   //***************************************
   byte frmType, seqNum, cmdID;
-  word attributeID;
+  uint16_t attributeID;
   frmType = byte(zb._PktData()[0]);                                           // Frame Type is bit 0 and 1 of Byte 0 P14 of ZCL
   frmType = frmType & 3;                                                      // Bitwise AND (&) with a mask to make sure we are looking at first two bits
   seqNum = byte(zb._PktData()[1]);                                            // Transaction seq number can be any value used in return packet to match a response to a request
@@ -1843,9 +1863,11 @@ void setup_ZigBee(Stream& port, byte _endpointClusterCount, bool _BatteryPowered
   // Dispaly number of clusters
   Serialprint(F("Total number of clusters:")); 
   Serialprintln(endpointClusterCount);
-  
-  Timer1.initialize( ((unsigned long)Light_Update_Interval) * 1000);         
-  Timer1.attachInterrupt(timerCallback);  
+ 
+  #if defined(__AVR__) 
+    Timer1.initialize( ((unsigned long)Light_Update_Interval) * 1000);         
+    Timer1.attachInterrupt(timerCallback);  
+  #endif
   
   Update_Lighting = false;
       

@@ -62,7 +62,7 @@ boolean CheckChkSum(int xBuffStart, int xBuffEnd)
   // return true if OK
   //***************************************
   int TmpChkSum=0;
-  for (int x=xBuffStart; x <= xBuffEnd; x++)
+  for (byte x=xBuffStart; x <= xBuffEnd; x++)
   {
     TmpChkSum = TmpChkSum + xBuff[min(x,xBuffSize)];
   }
@@ -92,7 +92,7 @@ void LOG(const char LogTxtAdd[])
   // when user calls _ReadLog
   //***************************************
   memset(strBuff,0,strBuffSize);
-  memcpy(&strBuff[0], LogTxtAdd, min(strBuffSize, strlen(LogTxtAdd)+1));
+  memcpy(&strBuff[0], LogTxtAdd, min(strBuffSize, (byte)(strlen(LogTxtAdd)+1)));
   #if _DEBUG
 	  Serial.println();
 	  Serial.print(F("*LOG*:  "));
@@ -113,7 +113,7 @@ void ZigBeeAPI::RxFlush()
   flush();
 }
 
-boolean ZigBeeAPI::TX(long DAddHi, long DAddLo, word NetAdd, byte sEP, byte dEP, word Prfl, word Clstr, const uint8_t BuffAdd[], word BuffSize)
+boolean ZigBeeAPI::TX(long DAddHi, long DAddLo, word NetAdd, byte sEP, byte dEP, word Prfl, word Clstr, unsigned char BuffAdd[], byte BuffSize)
 {
   //***************************************
   // Send StrPtr to DAddHi DAddLo and net address.
@@ -136,7 +136,7 @@ boolean ZigBeeAPI::TX(long DAddHi, long DAddLo, word NetAdd, byte sEP, byte dEP,
   //***************************************
   word Size = 0;
   memset(xBuff, 0, xBuffSize);
-  Size = 20 + min(BuffSize,(xBuffSize-20));             // Packet size is all data but chksum, start delimiter, and Length.
+  Size = 20 + min(BuffSize,(byte)(xBuffSize-20));             // Packet size is all data but chksum, start delimiter, and Length.
   //Create API Packet
   xBuff[0] = 0x7E;                                      // 7E = Start Delimiter P106 of XBee/XBee-PRO ZB RF Modules. Doc# 90000976_P
   xBuff[1] = highByte(Size);                            // Set Length of packet
@@ -169,23 +169,27 @@ boolean ZigBeeAPI::TX(long DAddHi, long DAddLo, word NetAdd, byte sEP, byte dEP,
 
   xBuff[22] = 0x00;                                     // Transmit Options Bitfield
 
-  memcpy(&xBuff[23], BuffAdd, min(BuffSize,100));       // Copy Payload buffer into packet
-  xBuff[min((23 + BuffSize),xBuffSize)] = GetChkSum(3, Size + 3);   // Find the Chksum and place it in last byte of API Packet
+  memcpy(&xBuff[23], BuffAdd, min(BuffSize, (byte)100));       // Copy Payload buffer into packet
+  xBuff[min((byte)(23 + BuffSize),xBuffSize)] = GetChkSum(3, Size + 3);   // Find the Chksum and place it in last byte of API Packet
   
   #if _DEBUG
     Serial.print("<");
-    PrintHex(xBuff,20 + min(BuffSize,(xBuffSize-20))+3);
+    PrintHex(xBuff,20 + min(BuffSize,(byte)((xBuffSize-20))+3));
     Serial.println();
   #endif
   
   //Send API Packet
-  for (int x=0; x <= (Size + 3); x++)                   // Transmit packet byte at a time
+  for (byte x=0; x <= (Size + 3); x++)                   // Transmit packet byte at a time
     {
     write(xBuff[min(x,xBuffSize)]);
+    
+    //    Serial.print((uint8_t)xBuff[x] >> 4, HEX);
+    //Serial.print((uint8_t)xBuff[x] & 0x0f, HEX);
+    //Serial.print(" ");
     }
   return true;                                          // Check for Ack and return result
 }
-boolean ZigBeeAPI::TX_Indirect(byte sEP, word Prfl, word Clstr, const char BuffAdd[], word BuffSize)
+boolean ZigBeeAPI::TX_Indirect(byte sEP, word Prfl, word Clstr, unsigned char BuffAdd[], byte BuffSize)
 {
   //***************************************
   // TX_Indrect is used to send to nodes that are in the Bind Table of the xBee. Only supported on the SMT version of the xBee Pro
@@ -198,13 +202,13 @@ boolean ZigBeeAPI::TX_Indirect(byte sEP, word Prfl, word Clstr, const char BuffA
   //***************************************
   word Size = 0;
   memset(xBuff, 0, xBuffSize);
-  Size = 20 + (min(BuffSize,(xBuffSize-20)));           // Packet size is all data but chksum, start delimiter, and Length.
+  Size = 20 + (min(BuffSize,(byte)(xBuffSize-20)));           // Packet size is all data but chksum, start delimiter, and Length.
   //Create API Packet
   xBuff[0] = 0x7E;                                      // 7E = Start Delimiter P106 of XBee/XBee-PRO ZB RF Modules. Doc# 90000976_P
   xBuff[1] = highByte(Size);                            // Set Length of packet
   xBuff[2] = lowByte(Size);
   xBuff[3] = 0x11;                                      // APID 11 = Explicit Addressing
-  xBuff[4] = 0x01;                                      // Frame ID 0 = no response
+  xBuff[4] = 0x00;                                      // Frame ID 0 = no response
   xBuff[5] = 0xFF;                                      // Set 64 bit IEEE Address to all 0xFFFFFFFF since this is an indrect message the real address will be looked
   xBuff[6] = 0xFF;                                      // up in the xBee's binding table and put in the place of the 0xFFFFF
   xBuff[7] = 0xFF;
@@ -231,18 +235,18 @@ boolean ZigBeeAPI::TX_Indirect(byte sEP, word Prfl, word Clstr, const char BuffA
 
   xBuff[22] = 0x04;                                     // Transmit Options Bitfield 0x04 = indirect addressing
 
-  memcpy(&xBuff[23], BuffAdd, min(BuffSize,100));       // Copy Payload buffer into packet
+  memcpy(&xBuff[23], BuffAdd, min(BuffSize, (byte)100));       // Copy Payload buffer into packet
 
-  xBuff[min((23 + BuffSize),xBuffSize)] = GetChkSum(3, Size + 3);   // Find the Chksum and place it in last byte of API Packet
+  xBuff[min((byte)(23 + BuffSize),xBuffSize)] = GetChkSum(3, Size + 3);   // Find the Chksum and place it in last byte of API Packet
   
   #if _DEBUG
     Serial.print("<");
-    PrintHex(xBuff,20 + min(BuffSize,(xBuffSize-20))+3);
+    PrintHex(xBuff,20 + min(BuffSize,(byte)((xBuffSize-20))+3));
     Serial.println();
   #endif
   
   //Send API Packet
-  for (int x=0; x <= (Size + 3); x++)                   // Transmit packet byte at a time
+  for (byte x=0; x <= (Size + 3); x++)                   // Transmit packet byte at a time
   {
     write(xBuff[min(x,xBuffSize)]);
   }
@@ -267,7 +271,7 @@ int ZigBeeAPI::RX(int TimeMS)
  //   -3 = RX Packet ID not known.
  //   -4 = Bad checksum
  //***************************************
-  int PktSize=0;
+  byte PktSize=0;
   byte TmpReadBuff[3];
   unsigned long start=0;
   if (TimeMS == 0)
@@ -326,7 +330,7 @@ int ZigBeeAPI::RX(int TimeMS)
     Serial.print(">");
     PrintHex(TmpReadBuff,2);
   #endif
-  for (int i=3; i <= min((PktSize + 3), xBuffSize); i++)// Read all packet data & checksum into xBuff
+  for (byte i=3; i <= min((byte)(PktSize + 3), xBuffSize); i++)// Read all packet data & checksum into xBuff
   {
   	if (TimeMS == 0)
     {
@@ -649,7 +653,7 @@ word ZigBeeAPI::_PktCluster()
   return S_Cluster;
 }
 
-byte * ZigBeeAPI::_ReadLog()
+char * ZigBeeAPI::_ReadLog()
 {
   //***************************************
   // Returns a pointer to the last logged item

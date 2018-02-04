@@ -33,8 +33,11 @@
 #include <ZigBeeAPI.h>
 #include "ZigBee.h"
 #include <SoftwareSerial.h>
-#include <avr/sleep.h>
-#include <avr/pgmspace.h>
+
+#if defined(__AVR__)
+  #include <avr/sleep.h>
+  #include <avr/pgmspace.h>
+#endif
 
 // --------------------------------------------------------------------------------------------------
 // -- Is the device battery powered. Remark define for fully powered / non sleepy nodes            --
@@ -141,7 +144,8 @@ const byte LEDPin=LED_BUILTIN;     // Pin that is connected to an LED's anode (p
 
 #define AddressableLED
 #define ADDR_LED_DATA_PIN 8
-byte Light_Update_Interval = 20;
+//#define ADDR_LED_DATA_PIN 1
+uint16_t Light_Update_Interval = 20;
 
 // --------------------------------------------------------------------------------------------------
 // -- This completes the configuration of the device. Further changes below should not be required --
@@ -251,9 +255,13 @@ byte Light_Update_Interval = 20;
 
 // XBee devices setup
 // ------------------
-#if !defined (__AVR_ATmega32U4__) && !defined (__MK20DX128__)
+#if defined(__AVR__) && (!defined (__AVR_ATmega32U4__) && !defined (__MK20DX128__))
   SoftwareSerial Serial1(XBeeTx, XBeeRx);
 #endif  
+
+#ifdef ESP8266
+
+#endif 
 
 extern ZigBeeAPI zb;                
 extern volatile bool XBeeIsAwake;
@@ -359,6 +367,16 @@ void setup()
     }
  
     FastLED.show();
+    
+    digitalWrite(LEDPin, HIGH);
+    clstr_ColorControl_ColourMode = 1;
+    clstr_ColorControl_A = 20889;
+    clstr_ColorControl_A_Current = 20889;
+    clstr_ColorControl_B = 21933;
+    clstr_ColorControl_B_Current = 21933;
+    clstr_LevelControl_Level = 255;
+    clstr_LevelControl_CurrentLevel = 255;
+    clstr_ColorControlSetColour(1, clstr_ColorControl_ColourMode, clstr_ColorControl_A_Current, clstr_ColorControl_B_Current, pinState(LEDPin)?(byte)clstr_LevelControl_CurrentLevel:0);
   #endif
 
   Serial1.begin(XBeeBaud);
@@ -403,7 +421,9 @@ void loop()
       #endif  
       
 		  SendOnOffReport(1, pinState(LEDPin));                              // Let SmartThings know about it
-    
+      
+      clstr_ColorControlSetColour(1, clstr_ColorControl_ColourMode, clstr_ColorControl_A_Current, clstr_ColorControl_B_Current, pinState(LEDPin)?(byte)clstr_LevelControl_CurrentLevel:0);
+
 		  buttonReleased = false;																								// Don't allow anymore toggling until button is released and pressed again
 
 		  now = millis();                                                       // Save the current time for debouncing
@@ -415,6 +435,7 @@ void loop()
         {
           digitalWrite(LEDPin,!pinState(LEDPin));                           // Toggle Output
           SendOnOffReport(1, pinState(LEDPin));                          // Let SmartThings know about it
+          clstr_ColorControlSetColour(1, clstr_ColorControl_ColourMode, clstr_ColorControl_A_Current, clstr_ColorControl_B_Current, pinState(LEDPin)?(byte)clstr_LevelControl_CurrentLevel:0);
         }
       #endif  
 	    buttonReleased = true;
@@ -454,7 +475,7 @@ void set_OnOff(byte endPoint, bool On)
       }
     #endif  
 
-    clstr_ColorControlSetColour(1, clstr_ColorControl_ColourMode, (byte)clstr_ColorControl_A_Current, (byte)clstr_ColorControl_B_Current, On?(byte)clstr_LevelControl_CurrentLevel:0);
+    clstr_ColorControlSetColour(1, clstr_ColorControl_ColourMode, clstr_ColorControl_A_Current, clstr_ColorControl_B_Current, On?(byte)clstr_LevelControl_CurrentLevel:0);
   }
 }
 
@@ -495,7 +516,7 @@ void clstr_ColorControlSetColour(byte endPoint, byte ColourMode, float hue, floa
       for (int i = 0; i < 3; i++)
       {
         if (maxval > 1) rgb[i] = rgb[i] / maxval;
-        rgb[i] = max((rgb[i] <= 0.0031308f ? 12.92f * rgb[i] : (1.0f + 0.055f) * pow(rgb[i], (1.0f / 2.4f)) - 0.055f) * 256, 0);
+        rgb[i] = max((float)(rgb[i] <= 0.0031308f ? 12.92f * rgb[i] : (1.0f + 0.055f) * pow(rgb[i], (1.0f / 2.4f)) - 0.055f) * 256.0f, 0.0f);
       }
         
       leds[0] = CRGB((byte)rgb[1], (byte)rgb[0], (byte)rgb[2]); 
@@ -516,7 +537,7 @@ void toggle_OnOff(byte endPoint)
       Serial.print(F(" toggled)")); 
     #endif 
 
-    clstr_ColorControlSetColour(1, clstr_ColorControl_ColourMode, (byte)clstr_ColorControl_A_Current, (byte)clstr_ColorControl_B_Current, pinState(LEDPin)?(byte)clstr_LevelControl_CurrentLevel:0);
+    clstr_ColorControlSetColour(1, clstr_ColorControl_ColourMode, clstr_ColorControl_A_Current, clstr_ColorControl_B_Current, pinState(LEDPin)?(byte)clstr_LevelControl_CurrentLevel:0);
   }
 }
 

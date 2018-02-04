@@ -44,7 +44,7 @@
 #define cluster_Diagnostics 0x0b05
 
 
-extern byte Light_Update_Interval;
+extern uint16_t Light_Update_Interval;
 extern float clstr_LevelControl_CurrentLevel;
 extern byte clstr_LevelControl_Level;
 extern unsigned int clstr_LevelControl_RemainingTime;
@@ -52,13 +52,13 @@ extern float clstr_LevelControl_Gradient;
 
 extern byte         clstr_ColorControl_ColourMode;
 extern float        clstr_ColorControl_A_Current;
-extern unsigned int clstr_ColorControl_A;
-extern unsigned int clstr_ColorControl_A_RemainingTime;
+extern uint16_t clstr_ColorControl_A;
+extern uint16_t clstr_ColorControl_A_RemainingTime;
 extern float        clstr_ColorControl_A_Gradient;
 
 extern float        clstr_ColorControl_B_Current;
-extern unsigned int clstr_ColorControl_B;
-extern unsigned int clstr_ColorControl_B_RemainingTime;
+extern uint16_t clstr_ColorControl_B;
+extern uint16_t clstr_ColorControl_B_RemainingTime;
 extern float        clstr_ColorControl_B_Gradient;
 
 
@@ -83,6 +83,7 @@ extern unsigned long now;
 // Utility functions
 bool pinState(byte pin);
 void printByteData(uint8_t Byte);
+//void PrintHex(int data, int length);
 void formatDate(char const *date, char const *tm, char *buff);
 
 
@@ -113,12 +114,13 @@ void ProcessInboundPacket(int rxResult);
 void ZDOpkt();
 void Simple_Desc_req();
 void Active_EP_req();
-int get_EndPointList(byte *list);
+int get_EndPointList(char *list);
 int get_ClustersForEndPoint(byte endPoint, unsigned int *list);
 
 // Zigbee Cluster Library commands
 void ZCLpkt();
 
+void clstr_ColorControl(byte endPoint, byte frmType, byte seqNum, byte cmdID, word attributeID);
 
 void Send10Response(bool Value, int attribute, byte seqNum); 
 void Send19Response(unsigned int Value, int attribute, byte seqNum); 
