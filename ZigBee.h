@@ -45,22 +45,25 @@
 
 
 extern uint16_t Light_Update_Interval;
-extern float clstr_LevelControl_CurrentLevel;
-extern byte clstr_LevelControl_Level;
-extern unsigned int clstr_LevelControl_RemainingTime;
-extern float clstr_LevelControl_Gradient;
 
-extern byte         clstr_ColorControl_ColourMode;
-extern float        clstr_ColorControl_A_Current;
-extern uint16_t clstr_ColorControl_A;
-extern uint16_t clstr_ColorControl_A_RemainingTime;
-extern float        clstr_ColorControl_A_Gradient;
+extern volatile byte         clstr_LevelControl_Command;
+extern volatile float        clstr_LevelControl_CurrentLevel;
+extern volatile byte         clstr_LevelControl_Level;
+extern volatile unsigned int clstr_LevelControl_RemainingTime;
+extern volatile float        clstr_LevelControl_Gradient;
 
-extern float        clstr_ColorControl_B_Current;
-extern uint16_t clstr_ColorControl_B;
-extern uint16_t clstr_ColorControl_B_RemainingTime;
-extern float        clstr_ColorControl_B_Gradient;
+extern volatile byte     clstr_ColorControl_ColourMode;
+extern volatile uint16_t clstr_ColorControl_RemainingTime;
 
+extern volatile float    clstr_ColorControl_A_Current;
+extern volatile uint16_t clstr_ColorControl_A;
+extern volatile float    clstr_ColorControl_A_Gradient;
+
+extern volatile float    clstr_ColorControl_B_Current;
+extern volatile uint16_t clstr_ColorControl_B;
+extern volatile float    clstr_ColorControl_B_Gradient;
+
+//extern float        clstr_ColorControl_B_Current;
 
 
 struct EndpointCluster {
@@ -120,7 +123,19 @@ int get_ClustersForEndPoint(byte endPoint, unsigned int *list);
 // Zigbee Cluster Library commands
 void ZCLpkt();
 
+
+void clstr_DeviceTemperature(byte endPoint, byte frmType, byte seqNum, byte cmdID, uint16_t attributeID) __attribute__((weak));
+
+bool get_OnOff(byte endPoint) __attribute__((weak));
+void set_OnOff(byte endPoint, bool On) __attribute__((weak));
+bool toggle_OnOff(byte endPoint) __attribute__((weak));
+
 void clstr_ColorControl(byte endPoint, byte frmType, byte seqNum, byte cmdID, word attributeID);
+
+float get_Temperature(byte endPoint) __attribute__((weak));
+float get_Pressure(byte endPoint) __attribute__((weak));
+float get_Humidity(byte endPoint) __attribute__((weak));
+
 
 void Send10Response(bool Value, int attribute, byte seqNum); 
 void Send19Response(unsigned int Value, int attribute, byte seqNum); 
@@ -139,6 +154,8 @@ void SendHumidityReport(byte endPoint, float Value);
 void Send10Report(byte endPoint, int Value, int cluster, int attribute);
 void Send21Report(byte endPoint, unsigned int Value, int cluster, int attribute);  
 void Send29Report(byte endPoint, int Value, int cluster, int attribute);
+
+void clstr_ColorControlSetColour(byte endPoint, byte ColourMode, float hue, float saturation, float level) __attribute__((weak));
 
 int PollSensors();
 

@@ -58,23 +58,25 @@ unsigned int old_Humidity;
 int old_Pressure;
 
 
-bool Update_Lighting;
-byte clstr_LevelControl_Command;
-float clstr_LevelControl_CurrentLevel;
-byte clstr_LevelControl_Level;
-unsigned int clstr_LevelControl_RemainingTime;
-float clstr_LevelControl_Gradient;
 
-byte     clstr_ColorControl_ColourMode;
-uint16_t clstr_ColorControl_RemainingTime;
+volatile bool Update_Lighting;
 
-float    clstr_ColorControl_A_Current;
-uint16_t clstr_ColorControl_A;
-float    clstr_ColorControl_A_Gradient;
+volatile byte         clstr_LevelControl_Command;
+volatile float        clstr_LevelControl_CurrentLevel;
+volatile byte         clstr_LevelControl_Level;
+volatile unsigned int clstr_LevelControl_RemainingTime;
+volatile float        clstr_LevelControl_Gradient;
 
-float    clstr_ColorControl_B_Current;
-uint16_t clstr_ColorControl_B;
-float    clstr_ColorControl_B_Gradient;
+volatile byte     clstr_ColorControl_ColourMode;
+volatile uint16_t clstr_ColorControl_RemainingTime;
+
+volatile float    clstr_ColorControl_A_Current;
+volatile uint16_t clstr_ColorControl_A;
+volatile float    clstr_ColorControl_A_Gradient;
+
+volatile float    clstr_ColorControl_B_Current;
+volatile uint16_t clstr_ColorControl_B;
+volatile float    clstr_ColorControl_B_Gradient;
 
 
 byte Sensor_ReportFreq = 4; // Wake cycles for sleepy device, ms for non sleepy
@@ -866,6 +868,7 @@ void clstr_Basic(byte frmType, byte seqNum, byte cmdID, uint16_t attributeID)   
 }
 
 
+
 void clstr_PowerConfiguration(byte frmType, byte seqNum, byte cmdID, uint16_t attributeID)                                                            // Cluster 0x0402 Temp
 {
   //***************************************
@@ -886,7 +889,7 @@ void clstr_PowerConfiguration(byte frmType, byte seqNum, byte cmdID, uint16_t at
 }
 
 
-void clstr_DeviceTemperature(byte endPoint, byte frmType, byte seqNum, byte cmdID, uint16_t attributeID) __attribute__((weak));
+
 void clstr_DeviceTemperature(byte endPoint, byte frmType, byte seqNum, byte cmdID, uint16_t attributeID)
 {
   FuncNotImplemented(); 
@@ -894,20 +897,17 @@ void clstr_DeviceTemperature(byte endPoint, byte frmType, byte seqNum, byte cmdI
 
 
 
-bool get_OnOff(byte endPoint) __attribute__((weak));
 bool get_OnOff(byte endPoint)
 {
   FuncNotImplemented(); 
 }
 
-void set_OnOff(byte endPoint, bool On) __attribute__((weak));
 void set_OnOff(byte endPoint, bool On)
 {
   FuncNotImplemented();   
 }
 
-void toggle_OnOff(byte endPoint) __attribute__((weak));
-void toggle_OnOff(byte endPoint)
+bool toggle_OnOff(byte endPoint)
 {
   FuncNotImplemented(); 
 }
@@ -933,6 +933,7 @@ void clstr_OnOff(byte endPoint, byte frmType, byte seqNum, byte cmdID, uint16_t 
   {
     set_OnOff(endPoint, false);
     sendDefaultResponse(cmdID, 0x00, 0x01);                                   // Send default response back to originator of command
+    clstr_ColorControlSetColour(1, clstr_ColorControl_ColourMode, clstr_ColorControl_A_Current, clstr_ColorControl_B_Current, 0);
     return;
   }
 
@@ -940,17 +941,19 @@ void clstr_OnOff(byte endPoint, byte frmType, byte seqNum, byte cmdID, uint16_t 
   {
     set_OnOff(endPoint, true);
     sendDefaultResponse(cmdID, 0x00, 0x01);                                   // Send default response back to originator of command
+    clstr_ColorControlSetColour(1, clstr_ColorControl_ColourMode, clstr_ColorControl_A_Current, clstr_ColorControl_B_Current, (byte)clstr_LevelControl_CurrentLevel);
     return;
   }
 
   if (frmType == 0x01 && cmdID == 0x02 && attributeID == 0x00)                // Toggle device
   {
-     toggle_OnOff(endPoint);
+    clstr_ColorControlSetColour(1, clstr_ColorControl_ColourMode, clstr_ColorControl_A_Current, clstr_ColorControl_B_Current, toggle_OnOff(endPoint)?(byte)clstr_LevelControl_CurrentLevel:0);
     sendDefaultResponse(cmdID, 0x00, 0x01);                                   // Send Default response back to originator of command
     return;
   }
   InvalidTypeOrCommand();
 }
+
 
 
 void clstr_LevelControl(byte endPoint, byte frmType, byte seqNum, byte cmdID, uint16_t attributeID)                                                            // Cluster 0x0006 On/Off
@@ -1045,12 +1048,11 @@ void clstr_LevelControl(byte endPoint, byte frmType, byte seqNum, byte cmdID, ui
 }
 
 
-void clstr_ColorControlSetColour(byte endPoint, byte ColourMode, float hue, float saturation, float level) __attribute__((weak));
+
 void clstr_ColorControlSetColour(byte endPoint, byte ColourMode, float hue, float saturation, float level)
 {
   FuncNotImplemented(); 
 }
-
 
 void clstr_ColorControl(byte endPoint, byte frmType, byte seqNum, byte cmdID, uint16_t attributeID)                                                            // Cluster 0x0006 On/Off
 {
@@ -1269,7 +1271,7 @@ void clstr_ColorControl(byte endPoint, byte frmType, byte seqNum, byte cmdID, ui
 }
 
 
-float get_Temperature(byte endPoint) __attribute__((weak));
+
 float get_Temperature(byte endPoint)
 {
   FuncNotImplemented();  
@@ -1296,7 +1298,6 @@ void clstr_Temperature(byte endPoint, byte frmType, byte seqNum, byte cmdID, uin
 
 
 
-float get_Pressure(byte endPoint) __attribute__((weak));
 float get_Pressure(byte endPoint)
 {
   FuncNotImplemented(); 
@@ -1323,7 +1324,6 @@ void clstr_Pressure(byte endPoint, byte frmType, byte seqNum, byte cmdID, uint16
 
 
 
-float get_Humidity(byte endPoint) __attribute__((weak));
 float get_Humidity(byte endPoint)
 {
   FuncNotImplemented(); 
@@ -1347,6 +1347,7 @@ void clstr_Humidity(byte endPoint, byte frmType, byte seqNum, byte cmdID, uint16
   }
   InvalidTypeOrCommand();
 }
+
 
 
 void ZCLpkt()
@@ -1775,7 +1776,7 @@ void timerCallback()
 { 
   if (clstr_LevelControl_RemainingTime > 0)
   {
-      if ((unsigned int)clstr_LevelControl_CurrentLevel != clstr_LevelControl_Level)
+      if ((byte)clstr_LevelControl_CurrentLevel != clstr_LevelControl_Level)
       {
         clstr_LevelControl_CurrentLevel += clstr_LevelControl_Gradient;
         if (clstr_LevelControl_CurrentLevel > 255) clstr_LevelControl_CurrentLevel = 255;
@@ -1796,7 +1797,7 @@ void timerCallback()
   
   if (clstr_ColorControl_RemainingTime > 0)
   {
-    if ((unsigned int)clstr_ColorControl_A_Current != clstr_ColorControl_A)
+    if ((uint16_t)clstr_ColorControl_A_Current != clstr_ColorControl_A)
     {
       clstr_ColorControl_A_Current += clstr_ColorControl_A_Gradient;
       
@@ -1809,7 +1810,7 @@ void timerCallback()
       Update_Lighting = true;
     }
     
-    if ((unsigned int)clstr_ColorControl_B_Current != clstr_ColorControl_B)
+    if ((uint16_t)clstr_ColorControl_B_Current != clstr_ColorControl_B)
     {
       clstr_ColorControl_B_Current += clstr_ColorControl_B_Gradient;
       

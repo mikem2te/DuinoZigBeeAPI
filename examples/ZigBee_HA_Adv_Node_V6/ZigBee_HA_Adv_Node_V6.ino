@@ -474,11 +474,22 @@ void set_OnOff(byte endPoint, bool On)
         Serial.print(F(" set to ground)"));
       }
     #endif  
-
-    clstr_ColorControlSetColour(1, clstr_ColorControl_ColourMode, clstr_ColorControl_A_Current, clstr_ColorControl_B_Current, On?(byte)clstr_LevelControl_CurrentLevel:0);
   }
 }
 
+bool toggle_OnOff(byte endPoint)
+{
+//  if (endPoint == 1)
+  {
+    #ifdef OnOffButton
+      digitalWrite(LEDPin,!pinState(LEDPin));                                   // Toggle Output
+      Serial.print(F("(OnOff) LED Toggled (Pin "));
+      Serial.print(LEDPin,DEC);
+      Serial.print(F(" toggled)")); 
+      return pinState(LEDPin);
+    #endif 
+  }
+}
 
 void clstr_ColorControlSetColour(byte endPoint, byte ColourMode, float hue, float saturation, float level)
 {
@@ -526,20 +537,6 @@ void clstr_ColorControlSetColour(byte endPoint, byte ColourMode, float hue, floa
   #endif
 }
 
-void toggle_OnOff(byte endPoint)
-{
-//  if (endPoint == 1)
-  {
-    #ifdef OnOffButton
-      digitalWrite(LEDPin,!pinState(LEDPin));                                   // Toggle Output
-      Serial.print(F("(OnOff) LED Toggled (Pin "));
-      Serial.print(LEDPin,DEC);
-      Serial.print(F(" toggled)")); 
-    #endif 
-
-    clstr_ColorControlSetColour(1, clstr_ColorControl_ColourMode, clstr_ColorControl_A_Current, clstr_ColorControl_B_Current, pinState(LEDPin)?(byte)clstr_LevelControl_CurrentLevel:0);
-  }
-}
 
 float get_Temperature(byte endPoint)
 {
