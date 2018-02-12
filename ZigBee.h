@@ -53,12 +53,13 @@ extern volatile unsigned int clstr_LevelControl_RemainingTime;
 extern volatile float        clstr_LevelControl_Gradient;
 
 extern volatile byte     clstr_ColorControl_ColourMode;
-extern volatile uint16_t clstr_ColorControl_RemainingTime;
 
+extern volatile uint16_t clstr_ColorControl_A_RemainingTime;
 extern volatile float    clstr_ColorControl_A_Current;
 extern volatile uint16_t clstr_ColorControl_A;
 extern volatile float    clstr_ColorControl_A_Gradient;
 
+extern volatile uint16_t clstr_ColorControl_B_RemainingTime;
 extern volatile float    clstr_ColorControl_B_Current;
 extern volatile uint16_t clstr_ColorControl_B;
 extern volatile float    clstr_ColorControl_B_Gradient;
